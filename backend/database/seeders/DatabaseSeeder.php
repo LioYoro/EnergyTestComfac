@@ -21,5 +21,8 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        // Import energy data from CSV
+        $this->call(EnergyDataSeeder::class);
     }
 }

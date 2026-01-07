@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\EnergyDataController;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get('/', [EnergyDataController::class, 'dashboard'])->name('dashboard');
+Route::get('/dashboard', [EnergyDataController::class, 'dashboard'])->name('dashboard.index');
