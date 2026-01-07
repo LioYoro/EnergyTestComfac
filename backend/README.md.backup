@@ -1,0 +1,163 @@
+# Backend API Documentation
+
+## Setup Instructions
+
+After pulling the backend code from the repository, follow these steps:
+
+1. **Install Dependencies:**
+   ```bash
+   composer install
+   ```
+
+2. **Configure Environment:**
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+3. **Run Migrations:**
+   ```bash
+   php artisan migrate
+   ```
+
+4. **Start Server:**
+   ```bash
+   php artisan serve
+   ```
+
+## API Endpoints Expected by Frontend
+
+The frontend expects the following API structure:
+
+### Branches
+- `GET /api/branches` - Get all branches
+- `GET /api/branches/{id}` - Get branch details
+- `GET /api/branches/{id}/buildings` - Get buildings for a branch
+
+### Buildings
+- `GET /api/buildings` - Get all buildings (with optional filters)
+- `GET /api/buildings/{id}` - Get building details
+- `GET /api/buildings/{id}/floors` - Get floors for a building
+- `GET /api/buildings/{id}/units` - Get units for a building
+- `GET /api/buildings/{id}/metrics` - Get building metrics
+
+### Floors
+- `GET /api/floors` - Get all floors (with optional filters)
+- `GET /api/floors/{id}` - Get floor details
+- `GET /api/floors/{id}/units` - Get units for a floor
+- `GET /api/floors/{id}/metrics` - Get floor metrics
+
+### Units/Equipment
+- `GET /api/units` - Get all units (with filters: branch, building, floor, unitType, status, consumptionRange)
+- `GET /api/units/{id}` - Get unit details
+- `PUT /api/units/{id}` - Update unit
+
+### Statistics
+- `GET /api/statistics` - Get overall statistics (with filters)
+- `GET /api/statistics/power-plant` - Get power plant overview statistics
+- `GET /api/statistics/building/{id}` - Get building statistics
+- `GET /api/statistics/branch/{id}` - Get branch statistics
+
+### Recommendations
+- `GET /api/recommendations` - Get recommendations (with filters)
+
+### Time Series Data
+- `GET /api/time-series/per-second` - Get per-second data
+- `GET /api/time-series/per-minute` - Get per-minute data
+- `GET /api/time-series/per-hour` - Get per-hour data
+
+### Search
+- `GET /api/search/units?q={query}` - Search units
+- `GET /api/search/buildings?q={query}` - Search buildings
+
+### Export
+- `GET /api/export/{format}` - Export data (csv, json, pdf)
+
+## Response Format
+
+All API responses should follow this format:
+
+```json
+{
+  "success": true,
+  "data": {
+    // Response data
+  },
+  "message": "Success message"
+}
+```
+
+Error responses:
+```json
+{
+  "success": false,
+  "error": "Error message",
+  "code": 400
+}
+```
+
+## Data Models
+
+### Branch
+```json
+{
+  "id": 1,
+  "name": "Main Facility",
+  "location": "Calamba, Laguna",
+  "type": "main",
+  "description": "Primary power generation facility"
+}
+```
+
+### Building
+```json
+{
+  "id": 1,
+  "branchId": 1,
+  "name": "Administrative Building",
+  "type": "administrative",
+  "totalFloors": 3,
+  "area": 1500
+}
+```
+
+### Floor
+```json
+{
+  "id": 1,
+  "buildingId": 1,
+  "floorNumber": 1,
+  "name": "Ground Floor",
+  "area": 500,
+  "unitCount": 8
+}
+```
+
+### Unit
+```json
+{
+  "id": 1,
+  "floorId": 1,
+  "name": "Main Office",
+  "equipmentType": "HVAC",
+  "consumption": 45.2,
+  "cost": 452.00,
+  "status": "operational",
+  "peakTime": "2:00 PM"
+}
+```
+
+## CORS Configuration
+
+Ensure CORS is configured to allow requests from:
+- `http://localhost:3000` (React development server)
+- Frontend production URL
+
+## Integration Notes
+
+- Frontend uses mock data by default (set `REACT_APP_USE_MOCK_DATA=false` to use API)
+- API base URL: `http://localhost:8000/api` (configurable via `.env`)
+- All endpoints should support filtering via query parameters
+- Implement pagination for large datasets
+- Use consistent date/time formats (ISO 8601 recommended)
+

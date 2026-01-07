@@ -12,6 +12,7 @@ class EnergyData extends Model
 
     // The attributes that are mass assignable (optional for now)
     protected $fillable = [
+        'floor',
         'date',
         'hour',
         'minute',
