@@ -29,12 +29,36 @@ const apiCall = async (endpoint, options = {}) => {
 // API Service Object - Backend Integration
 export const api = {
   // Energy Data Endpoints (Actual Backend API - Priority)
-  getEnergySummary: (date) => {
-    const url = date ? `/energy/dashboard/summary?date=${date}` : '/energy/dashboard/summary';
+  getEnergySummary: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.floor && filters.floor !== 'all') params.append('floor', filters.floor);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/summary?${params}` : '/energy/dashboard/summary';
     return apiCall(url);
   },
-  getHourlyData: (date) => {
-    const url = date ? `/energy/dashboard/hourly?date=${date}` : '/energy/dashboard/hourly';
+  getHourlyData: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.floor && filters.floor !== 'all') params.append('floor', filters.floor);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/hourly?${params}` : '/energy/dashboard/hourly';
+    return apiCall(url);
+  },
+  getWeeklyPeakHours: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.floor && filters.floor !== 'all') params.append('floor', filters.floor);
+    const url = params.toString() ? `/energy/dashboard/weekly-peak-hours?${params}` : '/energy/dashboard/weekly-peak-hours';
+    return apiCall(url);
+  },
+  getFloorAnalytics: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.floor && filters.floor !== 'all') params.append('floor', filters.floor);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/floor-analytics?${params}` : '/energy/dashboard/floor-analytics';
     return apiCall(url);
   },
   getMinuteData: (date, hour) => {
@@ -221,7 +245,7 @@ export const api = {
   getPerSecondData: async (filters) => {
     // Use actual backend endpoint
     try {
-      const summary = await api.getEnergySummary(filters.date);
+      const summary = await api.getEnergySummary(filters);
       return summary?.per_second || null;
     } catch {
       return null;
@@ -229,7 +253,7 @@ export const api = {
   },
   getPerMinuteData: async (filters) => {
     try {
-      const summary = await api.getEnergySummary(filters.date);
+      const summary = await api.getEnergySummary(filters);
       return summary?.per_minute || null;
     } catch {
       return null;
@@ -237,7 +261,7 @@ export const api = {
   },
   getPerHourData: async (filters) => {
     try {
-      const hourlyData = await api.getHourlyData(filters.date);
+      const hourlyData = await api.getHourlyData(filters);
       return hourlyData?.hourly_data || null;
     } catch {
       return null;

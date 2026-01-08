@@ -97,8 +97,6 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
           >
             <option value="day">Per Day</option>
             <option value="week">Per Week</option>
-            <option value="hour">Per Hour</option>
-            <option value="minute">Per Minute</option>
           </select>
         </div>
 
@@ -269,7 +267,7 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
         <div className="flex items-center space-x-3">
           <img src="https://picsum.photos/40?random=100" alt="User profile" className="w-10 h-10 rounded-full" />
           <div className="flex-1">
-            <p className="font-medium text-gray-900">Alex Johnson</p>
+            <p className="font-medium text-gray-900">Juan Dela Cruz</p>
             <p className="text-sm text-gray-500">Energy Analyst</p>
           </div>
           <button className="p-2 rounded-lg hover:bg-gray-100">

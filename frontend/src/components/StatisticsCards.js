@@ -1,6 +1,6 @@
 import React from 'react';
 
-const StatisticsCards = ({ statistics, summary }) => {
+const StatisticsCards = ({ statistics, summary, filters = {} }) => {
   // Formatter to keep numbers readable and avoid overflow
   const formatNum = (value, maxDigits = 4) => {
     const num = Number(value) || 0;
@@ -54,16 +54,16 @@ const StatisticsCards = ({ statistics, summary }) => {
               <span>Date: {summary.date || 'N/A'}</span>
             </div>
           ) : (
-            <div className="flex text-sm">
-              <span className="text-gray-700 mr-4">
-                <span className="location-marker bg-green-500"></span>
-                Operational: <span>{statistics.statusCounts?.operational || 0}</span>
-              </span>
-              <span className="text-gray-700">
-                <span className="location-marker bg-yellow-500"></span>
-                Maintenance: <span>{statistics.statusCounts?.maintenance || 0}</span>
-              </span>
-            </div>
+          <div className="flex text-sm">
+            <span className="text-gray-700 mr-4">
+              <span className="location-marker bg-green-500"></span>
+              Operational: <span>{statistics.statusCounts?.operational || 0}</span>
+            </span>
+            <span className="text-gray-700">
+              <span className="location-marker bg-yellow-500"></span>
+              Maintenance: <span>{statistics.statusCounts?.maintenance || 0}</span>
+            </span>
+          </div>
           )}
         </div>
       </div>
@@ -133,16 +133,22 @@ const StatisticsCards = ({ statistics, summary }) => {
                 <p className="text-sm text-gray-600 mt-1">
                   {summary.per_minute?.count || 0} Minutes • {summary.per_second?.count || 0} Seconds
                 </p>
+                {filters.floor && filters.floor !== 'all' && (
+                  <p className="text-xs text-gray-500 mt-2">Filtered: Floor {filters.floor}</p>
+                )}
+                {filters.timeGranularity && (
+                  <p className="text-xs text-gray-500">Granularity: {filters.timeGranularity}</p>
+                )}
               </>
             ) : (
               <>
-                <p className="text-sm font-medium text-gray-500">Status Overview</p>
-                <p className="text-xl font-bold text-green-600 mt-2">
-                  {statistics.statusCounts?.operational || 0} <span className="text-sm text-gray-600">Operational</span>
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  {statistics.statusCounts?.critical || 0} Critical • {statistics.statusCounts?.maintenance || 0} Maintenance
-                </p>
+            <p className="text-sm font-medium text-gray-500">Status Overview</p>
+            <p className="text-xl font-bold text-green-600 mt-2">
+              {statistics.statusCounts?.operational || 0} <span className="text-sm text-gray-600">Operational</span>
+            </p>
+            <p className="text-sm text-gray-600 mt-1">
+              {statistics.statusCounts?.critical || 0} Critical • {statistics.statusCounts?.maintenance || 0} Maintenance
+            </p>
               </>
             )}
           </div>
@@ -152,12 +158,12 @@ const StatisticsCards = ({ statistics, summary }) => {
         </div>
         <div className="mt-4">
           {!summary && (
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-green-500 h-2 rounded-full" 
-                style={{ width: `${statistics.totalUnits > 0 ? ((statistics.statusCounts?.operational || 0) / statistics.totalUnits) * 100 : 0}%` }}
-              ></div>
-            </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-green-500 h-2 rounded-full" 
+              style={{ width: `${statistics.totalUnits > 0 ? ((statistics.statusCounts?.operational || 0) / statistics.totalUnits) * 100 : 0}%` }}
+            ></div>
+          </div>
           )}
         </div>
       </div>

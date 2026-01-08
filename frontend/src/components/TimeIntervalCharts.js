@@ -25,7 +25,7 @@ ChartJS.register(
   Filler
 );
 
-const TimeIntervalCharts = ({ locations, showOnly }) => {
+const TimeIntervalCharts = ({ locations, showOnly, dateContext = null, hourContext = null }) => {
   const [perSecondData, setPerSecondData] = useState(locationData.timeData.perSecond);
   const [perMinuteData, setPerMinuteData] = useState(locationData.timeData.perMinute);
   const [perHourData, setPerHourData] = useState(locationData.timeData.perHour);
@@ -81,7 +81,27 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
         backgroundColor: 'rgba(0, 0, 0, 0.7)',
         titleFont: { size: 12 },
         bodyFont: { size: 12 },
-        padding: 10
+        padding: 10,
+        callbacks: {
+          title: function(context) {
+            if (dateContext) {
+              return dateContext;
+            }
+            return context[0].label || '';
+          },
+          label: function(context) {
+            const label = context.dataset.label || '';
+            const value = context.parsed.y || 0;
+            let dateTimeInfo = '';
+            if (dateContext) {
+              dateTimeInfo = ` • ${dateContext}`;
+              if (hourContext && context.dataIndex !== undefined) {
+                dateTimeInfo += ` at ${hourContext}:00`;
+              }
+            }
+            return `${label}: ${value.toFixed(2)} kW${dateTimeInfo}`;
+          }
+        }
       }
     },
     scales: {
@@ -120,7 +140,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
   };
 
   const perSecondChartData = {
-    labels: Array.from({ length: 60 }, (_, i) => `${i}s`),
+    labels: Array.from({ length: 60 }, (_, i) => {
+      const baseLabel = `${i}s`;
+      return dateContext ? `${baseLabel} (${dateContext})` : baseLabel;
+    }),
     datasets: [{
       label: 'Energy Consumption (kW)',
       data: perSecondData,
@@ -133,7 +156,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
   };
 
   const perMinuteChartData = {
-    labels: Array.from({ length: 60 }, (_, i) => `${i}m`),
+    labels: Array.from({ length: 60 }, (_, i) => {
+      const baseLabel = `${i}m`;
+      return dateContext && hourContext ? `${baseLabel} (${dateContext} ${hourContext}:00)` : baseLabel;
+    }),
     datasets: [{
       label: 'Energy Consumption (kW)',
       data: perMinuteData,
@@ -146,7 +172,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
   };
 
   const perHourChartData = {
-    labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+    labels: Array.from({ length: 24 }, (_, i) => {
+      const baseLabel = `${i}:00`;
+      return dateContext ? `${baseLabel} (${dateContext})` : baseLabel;
+    }),
     datasets: [
       {
         label: 'Residential',
@@ -186,7 +215,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Per Second Energy Consumption</h3>
-              <p className="text-gray-600 mt-1">Real-time energy usage measured every second for selected locations</p>
+              <p className="text-gray-600 mt-1">
+                Real-time energy usage measured every second for selected locations
+                {dateContext && <span className="ml-2 text-primary-600">• {dateContext}</span>}
+              </p>
             </div>
             <div className="mt-4 md:mt-0">
               <div className="flex items-center space-x-4">
@@ -215,7 +247,15 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Per Minute Energy Consumption</h3>
-              <p className="text-gray-600 mt-1">Minute-by-minute energy usage trends across locations</p>
+              <p className="text-gray-600 mt-1">
+                Minute-by-minute energy usage trends across locations
+                {dateContext && hourContext && (
+                  <span className="ml-2 text-primary-600">• {dateContext} at {hourContext}:00</span>
+                )}
+                {dateContext && !hourContext && (
+                  <span className="ml-2 text-primary-600">• {dateContext}</span>
+                )}
+              </p>
             </div>
             <div className="mt-4 md:mt-0">
               <div className="flex items-center space-x-4">
@@ -244,7 +284,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Per Hour Energy Consumption</h3>
-              <p className="text-gray-600 mt-1">Hourly energy consumption patterns by location type</p>
+              <p className="text-gray-600 mt-1">
+                Hourly energy consumption patterns by location type
+                {dateContext && <span className="ml-2 text-primary-600">• Date Range: {dateContext}</span>}
+              </p>
             </div>
             <div className="mt-4 md:mt-0">
               <div className="flex items-center space-x-4">
@@ -279,7 +322,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Per Second Energy Consumption</h3>
-              <p className="text-gray-600 mt-1">Real-time energy usage measured every second for selected locations</p>
+              <p className="text-gray-600 mt-1">
+                Real-time energy usage measured every second for selected locations
+                {dateContext && <span className="ml-2 text-primary-600">• {dateContext}</span>}
+              </p>
             </div>
             <div className="mt-4 md:mt-0">
               <div className="flex items-center space-x-4">
@@ -305,7 +351,15 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Per Minute Energy Consumption</h3>
-              <p className="text-gray-600 mt-1">Minute-by-minute energy usage trends across locations</p>
+              <p className="text-gray-600 mt-1">
+                Minute-by-minute energy usage trends across locations
+                {dateContext && hourContext && (
+                  <span className="ml-2 text-primary-600">• {dateContext} at {hourContext}:00</span>
+                )}
+                {dateContext && !hourContext && (
+                  <span className="ml-2 text-primary-600">• {dateContext}</span>
+                )}
+              </p>
             </div>
             <div className="mt-4 md:mt-0">
               <div className="flex items-center space-x-4">
@@ -331,7 +385,10 @@ const TimeIntervalCharts = ({ locations, showOnly }) => {
           <div className="flex flex-col md:flex-row md:items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Per Hour Energy Consumption</h3>
-              <p className="text-gray-600 mt-1">Hourly energy consumption patterns by location type</p>
+              <p className="text-gray-600 mt-1">
+                Hourly energy consumption patterns by location type
+                {dateContext && <span className="ml-2 text-primary-600">• Date Range: {dateContext}</span>}
+              </p>
             </div>
             <div className="mt-4 md:mt-0">
               <div className="flex items-center space-x-4">

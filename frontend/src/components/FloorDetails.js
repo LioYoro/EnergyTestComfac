@@ -1,27 +1,37 @@
 import React, { useMemo } from 'react';
-import { Bar } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  PointElement,
+  LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 } from 'chart.js';
 import { powerPlantData } from '../data/powerPlantData';
 import { calculateFloorMetrics } from '../utils/filterUtils';
+import { useFloorAnalytics } from '../hooks/useEnergyData';
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
   BarElement,
+  PointElement,
+  LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 );
 
 const FloorDetails = ({ units, filters }) => {
+  // Fetch floor analytics from backend
+  const { floorAnalytics } = useFloorAnalytics(filters);
+
   const floorData = useMemo(() => {
     let floorsToShow = powerPlantData.floors;
 
@@ -266,6 +276,188 @@ const FloorDetails = ({ units, filters }) => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Floor-Level Peak Hour Analysis */}
+      {floorAnalytics && floorAnalytics.floor_analytics && floorAnalytics.floor_analytics.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h3 className="text-lg font-semibold text-gray-900">Floor-Level Peak Hour Analysis</h3>
+            <p className="text-gray-600 text-sm mt-1">Peak consumption hours for each floor</p>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {floorAnalytics.floor_analytics.map((floor) => (
+                <div key={floor.floor} className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-900">Floor {floor.floor}</h4>
+                    {floor.peak_hour && (
+                      <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                        Peak: {floor.peak_hour.hour}:00
+                      </span>
+                    )}
+                  </div>
+                  {floor.peak_hour ? (
+                    <div className="space-y-1 text-sm">
+                      <p className="text-gray-700">
+                        <span className="font-medium">Peak Hour:</span> {floor.peak_hour.hour}:00
+                      </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">Peak Energy:</span> {floor.peak_hour.total_energy.toFixed(2)} Wh
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No peak hour data available</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Consumption Trends */}
+      {floorAnalytics && floorAnalytics.floor_analytics && floorAnalytics.floor_analytics.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h3 className="text-lg font-semibold text-gray-900">Daily Consumption Trends</h3>
+            <p className="text-gray-600 text-sm mt-1">Consumption patterns over time for each floor</p>
+          </div>
+          <div className="p-6">
+            {floorAnalytics.floor_analytics.map((floor) => {
+              if (!floor.daily_trend || floor.daily_trend.length === 0) return null;
+              
+              const trendData = {
+                labels: floor.daily_trend.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                datasets: [{
+                  label: `Floor ${floor.floor} Consumption (kWh)`,
+                  data: floor.daily_trend.map(d => d.total_energy / 1000),
+                  borderColor: '#3b82f6',
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  borderWidth: 2,
+                  fill: true,
+                  tension: 0.4
+                }]
+              };
+
+              return (
+                <div key={floor.floor} className="mb-6">
+                  <h4 className="text-md font-semibold text-gray-900 mb-3">Floor {floor.floor}</h4>
+                  <div className="chart-container" style={{ height: '200px' }}>
+                    <Line data={trendData} options={chartOptions} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Comparative Efficiency Metrics */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="border-b border-gray-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-gray-900">Comparative Efficiency Metrics</h3>
+          <p className="text-gray-600 text-sm mt-1">Energy efficiency comparison across floors</p>
+        </div>
+        <div className="p-6">
+          <div className="space-y-4">
+            {floorData
+              .map(floor => ({
+                ...floor,
+                efficiency: floor.totalUnits > 0 ? parseFloat(floor.totalConsumption) / floor.totalUnits : 0
+              }))
+              .sort((a, b) => a.efficiency - b.efficiency)
+              .map((floor, index) => {
+                const maxEfficiency = Math.max(...floorData.map(f => f.totalUnits > 0 ? parseFloat(f.totalConsumption) / f.totalUnits : 0));
+                const efficiencyPercent = maxEfficiency > 0 ? (floor.efficiency / maxEfficiency) * 100 : 0;
+                const isEfficient = index < Math.ceil(floorData.length / 2);
+                
+                return (
+                  <div key={floor.floorId} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-900">{floor.floorName}</p>
+                        <p className="text-sm text-gray-600">{floor.totalUnits} units</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {floor.efficiency.toFixed(2)} kWh/unit
+                        </p>
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          isEfficient ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {isEfficient ? 'Efficient' : 'Needs Optimization'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div 
+                        className={`h-3 rounded-full transition-all ${
+                          isEfficient ? 'bg-green-500' : 'bg-yellow-500'
+                        }`}
+                        style={{ width: `${100 - efficiencyPercent}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </div>
+
+      {/* Cost Breakdown Per Floor */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="border-b border-gray-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-gray-900">Cost Breakdown Per Floor</h3>
+          <p className="text-gray-600 text-sm mt-1">Total cost and cost per unit for each floor</p>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {floorData
+              .sort((a, b) => parseFloat(b.totalCost) - parseFloat(a.totalCost))
+              .map((floor) => {
+                const costPerUnit = floor.totalUnits > 0 ? parseFloat(floor.totalCost) / floor.totalUnits : 0;
+                const maxCost = Math.max(...floorData.map(f => parseFloat(f.totalCost)));
+                const costPercent = maxCost > 0 ? (parseFloat(floor.totalCost) / maxCost) * 100 : 0;
+                
+                return (
+                  <div key={floor.floorId} className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-gray-900">{floor.floorName}</h4>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-primary-600">
+                          ₱{parseFloat(floor.totalCost).toFixed(2)}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {floor.totalConsumption} kWh
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span>Cost per Unit</span>
+                          <span className="font-semibold">₱{costPerUnit.toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full"
+                            style={{ width: `${costPercent}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600">{floor.totalUnits} units</span>
+                        <span className="text-gray-600">
+                          {floor.totalUnits > 0 ? (parseFloat(floor.totalConsumption) / floor.totalUnits).toFixed(2) : '0.00'} kWh/unit
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
       </div>
     </div>
   );

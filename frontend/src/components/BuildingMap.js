@@ -134,17 +134,17 @@ const BuildingMap = ({ units, onBuildingClick }) => {
               
               <div className="p-6">
                 {/* Static Site Map */}
-                <div className="relative bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 rounded-lg border-2 border-gray-300 overflow-hidden" style={{ minHeight: '500px', position: 'relative' }}>
-                  {/* Grid Background */}
-                  <div className="absolute inset-0 opacity-20" style={{
+                <div className="relative bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-lg border-2 border-gray-400 overflow-hidden shadow-lg" style={{ minHeight: '700px', position: 'relative' }}>
+                  {/* Enhanced Grid Background */}
+                  <div className="absolute inset-0 opacity-30" style={{
                     backgroundImage: `
-                      linear-gradient(to right, #cbd5e1 1px, transparent 1px),
-                      linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)
+                      linear-gradient(to right, #3b82f6 1px, transparent 1px),
+                      linear-gradient(to bottom, #3b82f6 1px, transparent 1px)
                     `,
                     backgroundSize: '50px 50px'
                   }}></div>
                   
-                  {/* Roads/Paths */}
+                  {/* Enhanced Roads/Paths */}
                   <svg className="absolute inset-0 w-full h-full" style={{ zIndex: 1 }}>
                     {branchBuildings.map((building, index) => {
                       const pos = getBuildingPosition(building.id, branch.id);
@@ -152,17 +152,28 @@ const BuildingMap = ({ units, onBuildingClick }) => {
                       if (nextBuilding) {
                         const nextPos = getBuildingPosition(nextBuilding.id, branch.id);
                         return (
-                          <line
-                            key={`path-${building.id}`}
-                            x1={`${pos.x}%`}
-                            y1={`${pos.y}%`}
-                            x2={`${nextPos.x}%`}
-                            y2={`${nextPos.y}%`}
-                            stroke="#94a3b8"
-                            strokeWidth="2"
-                            strokeDasharray="5,5"
-                            opacity="0.4"
-                          />
+                          <g key={`path-${building.id}`}>
+                            <line
+                              x1={`${pos.x}%`}
+                              y1={`${pos.y}%`}
+                              x2={`${nextPos.x}%`}
+                              y2={`${nextPos.y}%`}
+                              stroke="#64748b"
+                              strokeWidth="4"
+                              strokeDasharray="8,4"
+                              opacity="0.5"
+                            />
+                            <line
+                              x1={`${pos.x}%`}
+                              y1={`${pos.y}%`}
+                              x2={`${nextPos.x}%`}
+                              y2={`${nextPos.y}%`}
+                              stroke="#f1f5f9"
+                              strokeWidth="2"
+                              strokeDasharray="8,4"
+                              opacity="0.8"
+                            />
+                          </g>
                         );
                       }
                       return null;
@@ -187,26 +198,28 @@ const BuildingMap = ({ units, onBuildingClick }) => {
                         }}
                         onClick={() => handleBuildingClick(building)}
                       >
-                        {/* Building Shape */}
+                        {/* Enhanced Building Shape */}
                         <div
-                          className={`relative ${isSelected ? 'ring-4 ring-primary-500 ring-offset-2' : ''}`}
+                          className={`relative group ${isSelected ? 'ring-4 ring-primary-500 ring-offset-2' : ''}`}
                           style={{
-                            width: building.type === 'production' ? '80px' : 
-                                   building.type === 'control' ? '70px' : 
-                                   building.type === 'administrative' ? '75px' : '65px',
-                            height: building.type === 'production' ? '80px' : 
-                                    building.type === 'control' ? '70px' : 
-                                    building.type === 'administrative' ? '75px' : '65px',
+                            width: building.type === 'production' ? '100px' : 
+                                   building.type === 'control' ? '90px' : 
+                                   building.type === 'administrative' ? '95px' : '85px',
+                            height: building.type === 'production' ? '100px' : 
+                                    building.type === 'control' ? '90px' : 
+                                    building.type === 'administrative' ? '95px' : '85px',
                             backgroundColor: color,
-                            borderRadius: building.type === 'production' ? '8px' : '12px',
+                            borderRadius: building.type === 'production' ? '12px' : '16px',
                             boxShadow: isSelected 
-                              ? `0 0 0 4px ${color}40, 0 10px 25px -5px rgba(0, 0, 0, 0.3)`
-                              : `0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 0 0 0 ${color}80`,
-                            border: `3px solid ${color}`,
-                            transition: 'all 0.3s ease'
+                              ? `0 0 0 4px ${color}40, 0 15px 35px -5px rgba(0, 0, 0, 0.4), 0 0 20px ${color}60`
+                              : `0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 0 0 0 ${color}80, 0 4px 8px rgba(0, 0, 0, 0.2)`,
+                            border: `4px solid ${color}`,
+                            transition: 'all 0.3s ease',
+                            transform: isSelected ? 'scale(1.1)' : 'scale(1)'
                           }}
+                          title={`${building.name}\nType: ${building.type}\nConsumption: ${consumption.toFixed(1)} kWh\nCost: ₱${parseFloat(building.totalCost || 0).toFixed(2)}\nUnits: ${building.totalUnits}`}
                         >
-                          {/* Building Icon */}
+                          {/* Enhanced Building Icon */}
                           <div className="absolute inset-0 flex items-center justify-center text-white">
                             <i className={`fas ${
                               building.type === 'production' ? 'fa-industry' :
@@ -214,44 +227,81 @@ const BuildingMap = ({ units, onBuildingClick }) => {
                               building.type === 'administrative' ? 'fa-building' :
                               building.type === 'maintenance' ? 'fa-tools' :
                               'fa-warehouse'
-                            } text-2xl`}></i>
+                            } text-3xl drop-shadow-lg`}></i>
                           </div>
                           
-                          {/* Building Label */}
-                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                            <div className="bg-white px-2 py-1 rounded shadow-md border border-gray-200">
-                              <p className="text-xs font-semibold text-gray-900 text-center max-w-[100px] truncate">
+                          {/* Enhanced Building Label */}
+                          <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap z-10">
+                            <div className="bg-white px-3 py-2 rounded-lg shadow-xl border-2 border-gray-300 backdrop-blur-sm">
+                              <p className="text-sm font-bold text-gray-900 text-center max-w-[120px] truncate">
                                 {building.name.split(' ')[0]}
                               </p>
-                              <p className="text-xs text-gray-600 text-center">
-                                {consumption.toFixed(0)} kWh
+                              <p className="text-xs font-semibold text-primary-600 text-center">
+                                {consumption.toFixed(1)} kWh
+                              </p>
+                              <p className="text-xs text-gray-500 text-center">
+                                {building.totalUnits} units
                               </p>
                             </div>
                           </div>
 
-                          {/* Consumption Indicator */}
-                          <div className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-md border border-gray-200">
-                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color }}></div>
+                          {/* Enhanced Consumption Indicator */}
+                          <div className="absolute -top-3 -right-3 bg-white rounded-full p-1.5 shadow-xl border-2 border-gray-300 z-10">
+                            <div className="w-5 h-5 rounded-full" style={{ backgroundColor: color }}></div>
+                          </div>
+
+                          {/* Hover Tooltip */}
+                          <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-20">
+                            <div className="bg-gray-900 text-white px-4 py-3 rounded-lg shadow-2xl text-sm min-w-[200px]">
+                              <p className="font-bold mb-2">{building.name}</p>
+                              <div className="space-y-1 text-xs">
+                                <p><span className="text-gray-400">Type:</span> <span className="capitalize">{building.type}</span></p>
+                                <p><span className="text-gray-400">Consumption:</span> {consumption.toFixed(2)} kWh</p>
+                                <p><span className="text-gray-400">Cost:</span> ₱{parseFloat(building.totalCost || 0).toFixed(2)}</p>
+                                <p><span className="text-gray-400">Units:</span> {building.totalUnits}</p>
+                                <p><span className="text-gray-400">Floors:</span> {building.totalFloors}</p>
+                              </div>
+                              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
+                                <div className="border-4 border-transparent border-t-gray-900"></div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
 
-                  {/* Legend/Scale */}
-                  <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-900 mb-2">Scale</p>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 h-1 bg-gray-400"></div>
-                      <span className="text-xs text-gray-600">100m</span>
+                  {/* Enhanced Legend/Scale */}
+                  <div className="absolute bottom-6 left-6 bg-white/95 backdrop-blur-md rounded-xl p-4 shadow-2xl border-2 border-gray-300">
+                    <p className="text-sm font-bold text-gray-900 mb-3">Scale</p>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-24 h-2 bg-gradient-to-r from-gray-400 to-gray-600 rounded"></div>
+                      <span className="text-sm font-semibold text-gray-700">100m</span>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-semibold text-gray-700 mb-2">Consumption</p>
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 rounded bg-green-500"></div>
+                          <span className="text-xs text-gray-600">Low (&lt; 200 kWh)</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 rounded bg-yellow-500"></div>
+                          <span className="text-xs text-gray-600">Medium (200-500 kWh)</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 rounded bg-red-500"></div>
+                          <span className="text-xs text-gray-600">High (&gt; 500 kWh)</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* North Arrow */}
-                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-lg border border-gray-200">
+                  {/* Enhanced North Arrow */}
+                  <div className="absolute top-6 right-6 bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-2xl border-2 border-gray-300">
                     <div className="flex flex-col items-center">
-                      <i className="fas fa-arrow-up text-gray-700 text-lg"></i>
-                      <span className="text-xs text-gray-600 mt-1">N</span>
+                      <i className="fas fa-arrow-up text-primary-600 text-2xl drop-shadow-md"></i>
+                      <span className="text-sm font-bold text-gray-700 mt-1">N</span>
                     </div>
                   </div>
                 </div>

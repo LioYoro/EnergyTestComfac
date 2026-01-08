@@ -285,8 +285,16 @@
                 const data = await response.json();
                 
                 document.getElementById('hourlyChartContainer').style.display = 'block';
+                const chartDate = new Date(date);
+                const formattedChartDate = chartDate.toLocaleDateString('en-US', { 
+                    weekday: 'long',
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric',
+                    timeZone: 'Asia/Manila'
+                });
                 document.getElementById('hourlyChartSubtitle').textContent = 
-                    `Data for ${new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+                    `Data for ${formattedChartDate}`;
                 
                 // Prepare chart data
                 const hours = data.hourly_data.map(item => item.hour);
@@ -296,10 +304,35 @@
                 // Find peak hour index
                 const peakIndex = data.hourly_data.findIndex(item => item.hour === data.peak_hour.hour);
                 
-                // Display peak hour info
+                // Display peak hour info with formatted date/time
                 const peakInfo = document.getElementById('peakHourInfo');
+                const peakDate = new Date(date);
+                const peakHourValue = data.peak_hour.hour;
+                const peakDateTime = new Date(peakDate);
+                peakDateTime.setHours(peakHourValue, 0, 0, 0);
+                
+                // Format in 12-hour format with full date
+                const formattedDateTime = peakDateTime.toLocaleString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZone: 'Asia/Manila'
+                });
+                
+                const formattedTime = peakDateTime.toLocaleString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZone: 'Asia/Manila'
+                });
+                
                 peakInfo.innerHTML = `
-                    <strong>Peak Consumption Hour:</strong> ${String(data.peak_hour.hour).padStart(2, '0')}:00<br>
+                    <strong>Peak Consumption:</strong> ${formattedDateTime}<br>
+                    <strong>Peak Hour:</strong> ${formattedTime}<br>
                     <strong>Average Current:</strong> ${data.peak_hour.avg_current} A<br>
                     <strong>Total Energy:</strong> ${data.peak_hour.total_energy.toFixed(2)} Wh
                 `;
@@ -413,8 +446,27 @@
                 
                 document.getElementById('minuteChartContainer').style.display = 'block';
                 document.getElementById('hourlyChartContainer').style.display = 'none';
+                const minuteDate = new Date(date);
+                const minuteHour = parseInt(hour);
+                const minuteDateTime = new Date(minuteDate);
+                minuteDateTime.setHours(minuteHour, 0, 0, 0);
+                
+                const formattedMinuteDate = minuteDateTime.toLocaleDateString('en-US', { 
+                    weekday: 'long',
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric',
+                    timeZone: 'Asia/Manila'
+                });
+                const formattedMinuteTime = minuteDateTime.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZone: 'Asia/Manila'
+                });
+                
                 document.getElementById('minuteChartSubtitle').textContent = 
-                    `Hour ${String(hour).padStart(2, '0')}:00 on ${new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+                    `Hour ${formattedMinuteTime} on ${formattedMinuteDate}`;
                 
                 // Prepare chart data
                 const minutes = data.minute_data.map(item => item.minute);

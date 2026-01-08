@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import FloorDetails from './components/FloorDetails';
+import BuildingMap from './components/BuildingMap';
 import Notification from './components/Notification';
 import { usePowerPlantData } from './hooks/usePowerPlantData';
 
@@ -93,6 +94,15 @@ function App() {
           {activeModule === 'floors' && (
             <div id="floors" className="px-8 py-6">
               <FloorDetails units={filteredUnits} filters={filters} />
+            </div>
+          )}
+          
+          {activeModule === 'building-map' && (
+            <div id="building-map" className="px-8 py-6">
+              <BuildingMap 
+                units={filteredUnits}
+                onBuildingClick={(building) => showNotification(`Viewing details for ${building.name}`)}
+              />
             </div>
           )}
         </main>
