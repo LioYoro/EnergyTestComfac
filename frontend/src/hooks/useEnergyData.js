@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 
 // Generate mock dates (last 8 days) as fallback when backend dates are unavailable
@@ -26,29 +26,80 @@ export const useEnergyData = (filters = {}) => {
   const [loading, setLoading] = useState(false); // Start as false to allow immediate rendering
   const [error, setError] = useState(null);
 
+  // Use ref to track the last fetch key to prevent unnecessary re-fetches
+  const lastFetchKeyRef = useRef(null);
+  const isInitialMount = useRef(true);
+  // Lock the date once determined - prevents it from changing
+  const lockedDateRef = useRef(null);
+
   // Fetch ALL data in parallel - dates, hourly, and summary simultaneously
   useEffect(() => {
     const fetchAllData = async () => {
+      // Create a unique key for this fetch based on actual filter values
+      const fetchKey = `${filters.date || 'auto'}_${filters.floor || 'all'}_${filters.timeGranularity || 'day'}_${filters.weekday || 'all'}`;
+      
+      // Skip re-fetch if we already have data for these exact filters (unless it's the initial mount)
+      // This prevents data from changing after initial load
+      if (!isInitialMount.current && lastFetchKeyRef.current === fetchKey) {
+        // Check if we have cached data for this key
+        const cacheKey = `${filters.date || 'no-date'}_${filters.floor || 'all'}_${filters.timeGranularity || 'day'}_${filters.weekday || 'all'}`;
+        const cachedHourlyData = hourlyDataCache.get(cacheKey);
+        const cachedSummary = summaryCache.get(cacheKey);
+
+        // If we have cached data AND we already have state data, don't refetch
+        if (cachedHourlyData && cachedSummary && hourlyData && summary) {
+          // We already have data for these filters, don't refetch
+          return;
+        }
+        
+        // If we have cached data but no state, restore from cache
+        if (cachedHourlyData && cachedSummary) {
+          if (!hourlyData) setHourlyData(cachedHourlyData);
+          if (!summary) setSummary(cachedSummary);
+          return;
+        }
+      }
+      
+      isInitialMount.current = false;
+      lastFetchKeyRef.current = fetchKey;
       setError(null);
       
-      // Determine the date to use - prioritize filters.date, otherwise use first available date
+      // Determine the date to use - prioritize filters.date, otherwise use locked date or first available
+      // Lock the date once determined to prevent it from changing
       let dateToUse = filters.date;
       
-      // If no date specified, fetch dates first to get the first available date
-      if (!dateToUse) {
-        try {
-          const datesResponse = await api.getAvailableDates();
-          const dates = datesResponse?.dates || getMockDates();
-          setAvailableDates(dates);
-          if (dates.length > 0) {
-            dateToUse = dates[0]; // Use first available date (earliest)
-          }
-        } catch (err) {
-          console.error('Error fetching dates:', err);
-          const mockDates = getMockDates();
-          setAvailableDates(mockDates);
-          if (mockDates.length > 0) {
-            dateToUse = mockDates[0];
+      // If filters.date is explicitly set, use it and lock it
+      if (dateToUse) {
+        lockedDateRef.current = dateToUse;
+      } else {
+        // If no date in filters, use locked date if available, otherwise determine it
+        if (lockedDateRef.current) {
+          // Use the locked date (prevents date from changing after initial load)
+          dateToUse = lockedDateRef.current;
+        } else {
+          // Determine date for the first time
+          if (availableDates.length > 0) {
+        dateToUse = availableDates[0];
+            lockedDateRef.current = dateToUse; // Lock it
+          } else {
+            // Fetch dates only if we don't have them yet
+            try {
+              const datesResponse = await api.getAvailableDates();
+              const dates = datesResponse?.dates || getMockDates();
+              setAvailableDates(dates);
+              if (dates.length > 0) {
+                dateToUse = dates[0]; // Use first available date (earliest)
+                lockedDateRef.current = dateToUse; // Lock it immediately
+              }
+            } catch (err) {
+              console.error('Error fetching dates:', err);
+              const mockDates = getMockDates();
+              setAvailableDates(mockDates);
+              if (mockDates.length > 0) {
+                dateToUse = mockDates[0];
+                lockedDateRef.current = dateToUse; // Lock it
+              }
+            }
           }
         }
       }
@@ -122,14 +173,19 @@ export const useEnergyData = (filters = {}) => {
               const firstKey = hourlyDataCache.keys().next().value;
               hourlyDataCache.delete(firstKey);
             }
+            // Only update if we don't already have data for this exact date
+            // This prevents overwriting existing data
+            if (!hourlyData || hourlyData.date !== hourlyResult.date) {
             setHourlyData(hourlyResult);
+            }
                   setLoading(false);
           }
                 return hourlyResult;
               })
               .catch(err => {
           console.error('Error fetching hourly data:', err);
-          if (!cachedHourlyData) {
+          // Don't clear existing data on error - keep what we have
+          if (!cachedHourlyData && !hourlyData) {
             setHourlyData(null);
           }
                 setLoading(false);

@@ -60,26 +60,14 @@ const Dashboard = ({ statistics, units, filters }) => {
   };
 
   // Prepare filters object for API calls
-  // Use the first available date from availableDates if no date is specified
-  // This prevents using today's date which might not have data
+  // Use a stable date - once set, don't change it unless filters.date explicitly changes
   const apiFilters = React.useMemo(() => {
-    // If a date is explicitly set in filters, use it
-    if (filters.date) {
-      return {
-        floor: filters.floor,
-        timeGranularity: filters.timeGranularity,
-        weekday: filters.weekday,
-        date: filters.date
-      };
-    }
-    
-    // Otherwise, use the first available date (will be set by useEnergyData hook)
-    // Don't use today's date as fallback - it might not have data
+    // Always use filters.date if provided - this ensures stability
     return {
       floor: filters.floor,
       timeGranularity: filters.timeGranularity,
       weekday: filters.weekday,
-      date: null // Let useEnergyData hook set it to first available date
+      date: filters.date || null // null means "use first available" - will be set by hook
     };
   }, [filters.floor, filters.timeGranularity, filters.weekday, filters.date]);
 
@@ -101,10 +89,64 @@ const Dashboard = ({ statistics, units, filters }) => {
   // Ensure we have units data
   const displayUnits = units && units.length > 0 ? units : [];
   
+  // Top consuming units - use actual units from displayUnits, sorted by consumption
+  // Show which unit has highest consumption and which floor it's from
+  const topUnits = React.useMemo(() => {
+    if (!displayUnits || displayUnits.length === 0) {
+      return [];
+    }
+    
+    // Sort units by consumption (highest first) and get top 5
+    return [...displayUnits]
+      .filter(unit => unit.floorId && unit.floorId > 0) // Filter out invalid floors
+      .sort((a, b) => (b.consumption || 0) - (a.consumption || 0))
+      .slice(0, 5)
+      .map(unit => {
+        const floor = powerPlantData.floors.find(f => f.id === unit.floorId);
+        const building = powerPlantData.buildings.find(b => b.id === floor?.buildingId);
+        const consumption = unit.consumption || 0;
+        const cost = unit.cost || consumption * 10;
+        return {
+          id: unit.id,
+          name: unit.name,
+          floorId: unit.floorId,
+          floorName: floor?.name || `Floor ${unit.floorId}`,
+          buildingName: building?.name || 'Main Building',
+          equipmentType: unit.equipmentType || 'Unknown',
+          consumption: consumption,
+          cost: cost,
+          status: unit.status || 'operational',
+          // Pre-compute tooltip strings for instant display
+          tooltipLabels: [
+            `${consumption.toFixed(2)} kWh`,
+            `Cost: ₱${cost.toFixed(2)}`,
+            `${floor?.name || `Floor ${unit.floorId}`} • ${unit.equipmentType || 'Unknown'}`
+          ]
+        };
+      });
+  }, [displayUnits]);
+
+  
   // Calculate statistics from units if not provided
-  const displayStatistics = statistics && Object.keys(statistics).length > 0 
-    ? statistics 
-    : calculatePowerPlantStatistics(displayUnits);
+  // Memoize to prevent data from changing over time
+  const displayStatistics = React.useMemo(() => {
+    if (statistics && Object.keys(statistics).length > 0) {
+      return statistics;
+    }
+    return calculatePowerPlantStatistics(displayUnits);
+  }, [
+    statistics?.totalUnits,
+    statistics?.totalConsumption,
+    statistics?.totalCost,
+    statistics?.avgConsumption,
+    statistics?.avgCost,
+    statistics?.avgCurrent,
+    statistics?.consumptionRange,
+    statistics?.statusCounts?.operational,
+    statistics?.statusCounts?.maintenance,
+    statistics?.statusCounts?.critical,
+    displayUnits.length
+  ]);
 
   // Format date for display
   const formatDate = (dateString) => {
@@ -200,33 +242,6 @@ const Dashboard = ({ statistics, units, filters }) => {
       );
     }
 
-    // Top consuming units - use API data (REAL DATA FROM DATABASE)
-    let topUnits = [];
-    if (apiTopUnits && apiTopUnits.top_units && apiTopUnits.top_units.length > 0) {
-      topUnits = apiTopUnits.top_units.map(unit => ({
-        id: unit.id,
-        name: unit.name,
-        floorId: unit.floor_id,
-        floorName: unit.floor_name,
-        consumption: unit.consumption,
-        cost: unit.cost,
-        avgCurrent: unit.avg_current
-      }));
-    } else {
-      // Fallback: calculate from displayUnits only if API fails
-      topUnits = [...displayUnits]
-        .sort((a, b) => b.consumption - a.consumption)
-        .slice(0, 5)
-        .map(unit => {
-          const floor = powerPlantData.floors.find(f => f.id === unit.floorId);
-          const building = powerPlantData.buildings.find(b => b.id === floor?.buildingId);
-          return {
-            ...unit,
-            floorName: floor?.name,
-            buildingName: building?.name
-          };
-        });
-    }
 
     // Default daily trend (for backward compatibility) - use deterministic pattern
     const totalConsumption = parseFloat(displayStatistics.totalConsumption || 0);
@@ -246,13 +261,15 @@ const Dashboard = ({ statistics, units, filters }) => {
     ];
 
     // Generate static peak consumption alerts from floor metrics (for immediate display)
+    // Filter out Floor 0 and ensure all valid floors (1, 2, 3) are included
     const staticPeakConsumptionAlerts = floorMetrics
+      .filter(floor => floor.floorId && floor.floorId > 0) // Exclude Floor 0
       .map((floor, index) => {
         const baseConsumption = parseFloat(floor.totalConsumption) || 0;
         // Use deterministic peak hours based on floor ID
         const peakHour = 14 + (index % 3); // 14, 15, or 16
         return {
-          floor: floor.floorId || index + 1,
+          floor: floor.floorId,
           total_energy_kwh: baseConsumption,
           peak_hour: {
             hour: peakHour,
@@ -261,8 +278,8 @@ const Dashboard = ({ statistics, units, filters }) => {
         };
       })
       .filter(floor => floor.peak_hour && floor.peak_hour.total_energy > 0)
-      .sort((a, b) => (b.peak_hour?.total_energy || 0) - (a.peak_hour?.total_energy || 0))
-      .slice(0, 3);
+      .sort((a, b) => (b.peak_hour?.total_energy || 0) - (a.peak_hour?.total_energy || 0));
+      // Show all valid floors (1, 2, 3), not just top 3, so Floor 2 is always visible
 
     // Generate static hourly consumption data (for immediate display)
     // Create a realistic hourly consumption pattern based on total consumption
@@ -513,27 +530,24 @@ const Dashboard = ({ statistics, units, filters }) => {
         }
       });
       
-      // Use peak hour from backend API response
+      // Use peak hour from backend API response - only time, no date (aligned with filters)
       if (hourlyData.peak_hour && hourlyData.peak_hour.hour !== null && hourlyData.peak_hour.hour !== undefined) {
-        // Use formatted datetime from backend (most accurate)
-        if (hourlyData.peak_hour.formatted_datetime) {
-          peakHourFormatted = hourlyData.peak_hour.formatted_datetime;
-          // Extract time part for secondary display
-          const timeMatch = hourlyData.peak_hour.formatted_datetime.match(/\d{1,2}:\d{2}\s*(AM|PM)/i);
-          peakHour = timeMatch ? timeMatch[0] : hourlyData.peak_hour.formatted_time || `${String(hourlyData.peak_hour.hour).padStart(2, '0')}:00`;
-        } else if (hourlyData.peak_hour.formatted_time) {
-          peakHourFormatted = null;
+        // Use formatted_time (just time, no date) to align with filters
+        if (hourlyData.peak_hour.formatted_time) {
           peakHour = hourlyData.peak_hour.formatted_time;
         } else {
           // Fallback to 24-hour format
           peakHour = `${String(hourlyData.peak_hour.hour).padStart(2, '0')}:00`;
         }
+        // Don't use formatted_datetime - we only want time
+        peakHourFormatted = null;
       }
     }
     // Priority 2: Use static peak hour for immediate display (consistent with other graphs)
+    // Only use time, not datetime
     else if (staticDashboardData && staticDashboardData.staticPeakHour) {
-      peakHourFormatted = staticDashboardData.staticPeakHour.formatted_datetime;
       peakHour = staticDashboardData.staticPeakHour.formatted_time || `${String(staticDashboardData.staticPeakHour.hour).padStart(2, '0')}:00`;
+      peakHourFormatted = null;
       
       // Build peak hours from static data
       if (staticDashboardData.staticHourlyData) {
@@ -550,9 +564,10 @@ const Dashboard = ({ statistics, units, filters }) => {
       peakHours,
       peakHour,
       peakHourFormatted,
-      summary
+      summary,
+      topUnits // Include topUnits from the calculation above
     };
-  }, [hourlyData, weeklyPeakHours, floorAnalytics, summary, staticDashboardData.floorMetrics]);
+  }, [hourlyData, weeklyPeakHours, floorAnalytics, summary, staticDashboardData.floorMetrics, topUnits]);
 
   // Combine static and API data for backward compatibility
   const dashboardData = useMemo(() => ({
@@ -1012,7 +1027,7 @@ const Dashboard = ({ statistics, units, filters }) => {
       {/* Date Selector removed per request */}
 
       {/* Statistics Cards */}
-      <StatisticsCards statistics={displayStatistics} summary={summary} filters={filters} />
+      <StatisticsCards statistics={displayStatistics} summary={summary} filters={filters} hourlyData={hourlyData} />
 
       {/* Power Plant Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1022,7 +1037,7 @@ const Dashboard = ({ statistics, units, filters }) => {
             <div>
               <p className="text-sm font-medium text-gray-500">Total Branches</p>
               <p className="text-3xl font-bold text-gray-900 mt-2">{powerPlantData.branches.length}</p>
-            </div>
+            </div>  
             <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
               <i className="fas fa-code-branch text-indigo-600 text-xl"></i>
             </div>
@@ -1055,60 +1070,6 @@ const Dashboard = ({ statistics, units, filters }) => {
           </div>
         </div>
 
-        {/* Peak Hour - only show for Per Day granularity */}
-        {/* Show static data immediately, then update with API data when available */}
-        {granularity === 'day' && (
-          <div className="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Peak Hour</p>
-                {/* Priority 1: Show API data if available (most accurate) */}
-                {hourlyData?.peak_hour?.formatted_datetime ? (
-                  <>
-                    <p className="text-lg font-bold text-gray-900 mt-2">{hourlyData.peak_hour.formatted_datetime}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {hourlyData.peak_hour.formatted_time || `${String(hourlyData.peak_hour.hour).padStart(2, '0')}:00`}
-                    </p>
-                    {hourlyData.peak_hour.total_energy && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {hourlyData.peak_hour.total_energy.toFixed(2)} Wh
-                      </p>
-                    )}
-                  </>
-                ) : hourlyData?.peak_hour && hourlyData.peak_hour.hour !== null && hourlyData.peak_hour.hour !== undefined ? (
-                  <>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">
-                      {String(hourlyData.peak_hour.hour).padStart(2, '0')}:00
-                    </p>
-                    {hourlyData.peak_hour.total_energy && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {hourlyData.peak_hour.total_energy.toFixed(2)} Wh
-                      </p>
-                    )}
-                  </>
-                ) : staticDashboardData?.staticPeakHour ? (
-                  <>
-                    {/* Priority 2: Show static data immediately while API loads */}
-                    <p className="text-lg font-bold text-gray-900 mt-2">{staticDashboardData.staticPeakHour.formatted_datetime}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {staticDashboardData.staticPeakHour.formatted_time || `${String(staticDashboardData.staticPeakHour.hour).padStart(2, '0')}:00`}
-                    </p>
-                    {staticDashboardData.staticPeakHour.total_energy && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {staticDashboardData.staticPeakHour.total_energy.toFixed(2)} Wh
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-lg font-bold text-gray-500 mt-2">No peak hour data</p>
-                )}
-              </div>
-              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <i className="fas fa-clock text-orange-600 text-xl"></i>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Charts Row 1: Equipment Type & Floor Comparison */}
@@ -1176,7 +1137,7 @@ const Dashboard = ({ statistics, units, filters }) => {
         </div>
       )}
 
-      {/* Charts Row 3: Cost Breakdown & Peak Hours */}
+      {/* Charts Row 3: Cost Breakdown & Top 5 Consuming Units */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cost Breakdown */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1203,70 +1164,152 @@ const Dashboard = ({ statistics, units, filters }) => {
           </div>
         </div>
 
-        {/* Peak Hours / Hourly Consumption */}
+        {/* Top 5 Consuming Units - Bar Chart */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-200 px-6 py-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {(hourlyData || staticDashboardData?.staticHourlyData) ? 'Hourly Consumption' : 'Peak Hours Analysis'}
-            </h3>
-            <p className="text-gray-600 text-sm mt-1">
-              {(hourlyData || staticDashboardData?.staticHourlyData)
-                ? `Energy consumption by hour for ${dateContext}`
-                : `Consumption distribution by peak hours • ${dateContext}`
-              }
-              {/* Only show peak hour from API data (accurate) - don't show static to avoid confusion */}
-              {hourlyData?.peak_hour && hourlyData.peak_hour.formatted_datetime && (
-                <span className="ml-2 text-primary-600 font-medium block mt-1">
-                  Peak: {hourlyData.peak_hour.formatted_datetime} ({hourlyData.peak_hour.total_energy?.toFixed(2) || '0.00'} Wh)
-                </span>
-              )}
-              {hourlyData?.peak_hour && !hourlyData.peak_hour.formatted_datetime && hourlyData.peak_hour.hour !== null && hourlyData.peak_hour.hour !== undefined && (
-                <span className="ml-2 text-primary-600 font-medium block mt-1">
-                  Peak: {String(hourlyData.peak_hour.hour).padStart(2, '0')}:00 ({hourlyData.peak_hour.total_energy?.toFixed(2) || '0.00'} Wh)
-                </span>
-              )}
-            </p>
+            <h3 className="text-lg font-semibold text-gray-900">Top 5 Consuming Units</h3>
+            <p className="text-gray-600 text-sm mt-1">Highest energy consuming equipment units</p>
           </div>
           <div className="p-6">
-            {/* Always show chart - it will have data (static or API) or empty 24-hour structure */}
-            <div className="chart-container" style={{ height: '300px' }}>
-              <Bar data={peakHoursData} options={chartOptions} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Top 5 Consuming Units */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">Top 5 Consuming Units</h3>
-          <p className="text-gray-600 text-sm mt-1">Highest energy consuming equipment units</p>
-        </div>
-        <div className="p-6">
-          <div className="space-y-4">
-            {staticDashboardData.topUnits.map((unit, index) => (
-              <div key={unit.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
-                    index === 0 ? 'bg-yellow-500' : 
-                    index === 1 ? 'bg-gray-400' : 
-                    index === 2 ? 'bg-orange-500' : 'bg-gray-300'
-                  }`}>
-                    {index + 1}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{unit.name}</p>
-                    <p className="text-sm text-gray-600">{unit.buildingName} • {unit.floorName} • {unit.equipmentType}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-900">{unit.consumption.toFixed(1)} kWh</p>
-                  <p className="text-sm text-primary-600">
-                    ₱{parseFloat(unit.cost || unit.consumption * 10).toFixed(2)}
-                  </p>
-                </div>
+            {topUnits && topUnits.length > 0 ? (
+              <div className="chart-container" style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: topUnits.map(u => `₱${parseFloat(u.cost || u.consumption * 10).toFixed(2)}`),
+                    datasets: [{
+                      label: 'Consumption (kWh)',
+                      data: topUnits.map(u => u.consumption),
+                      backgroundColor: [
+                        '#f59e0b', // Yellow for #1
+                        '#9ca3af', // Gray for #2
+                        '#f97316', // Orange for #3
+                        '#d1d5db', // Light gray for #4
+                        '#d1d5db'  // Light gray for #5
+                      ],
+                      borderColor: [
+                        '#d97706',
+                        '#6b7280',
+                        '#ea580c',
+                        '#9ca3af',
+                        '#9ca3af'
+                      ],
+                      borderWidth: 2,
+                      borderRadius: 6
+                    }]
+                  }}
+                  options={{
+                    ...chartOptions,
+                    // Vertical bar chart (default) - better tooltip performance
+                    animation: {
+                      duration: 0 // Disable chart animations for instant rendering
+                    },
+                    hover: {
+                      animationDuration: 0 // Disable hover animations
+                    },
+                    interaction: {
+                      mode: 'point',
+                      intersect: true,
+                      includeInvisible: false
+                    },
+                    elements: {
+                      bar: {
+                        hoverBorderWidth: 2
+                      }
+                    },
+                    plugins: {
+                      ...chartOptions.plugins,
+                      tooltip: {
+                        enabled: true,
+                        mode: 'point',
+                        intersect: true,
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        titleFont: { size: 12, weight: 'bold' },
+                        bodyFont: { size: 11 },
+                        padding: 10,
+                        displayColors: false,
+                        position: 'nearest',
+                        animation: false, // Completely disable animation
+                        transitions: {
+                          show: {
+                            animation: {
+                              duration: 0
+                            }
+                          },
+                          hide: {
+                            animation: {
+                              duration: 0
+                            }
+                          }
+                        },
+                        filter: null, // Disable filtering that might cause delays
+                        itemSort: null, // Disable sorting that might cause delays
+                        callbacks: {
+                          title: (ctx) => {
+                            // Show unit name as tooltip title
+                            const dataIndex = ctx[0].dataIndex;
+                            const unit = topUnits[dataIndex];
+                            return unit?.name || '';
+                          },
+                          label: (ctx) => {
+                            // Get the correct data index for vertical bar chart
+                            const dataIndex = ctx.dataIndex;
+                            
+                            // Ensure index is valid
+                            if (dataIndex < 0 || dataIndex >= topUnits.length) {
+                              return [];
+                            }
+                            
+                            // Use pre-computed tooltip labels for instant display
+                            const unit = topUnits[dataIndex];
+                            if (!unit) {
+                              return [];
+                            }
+                            
+                            return [
+                              `Consumption: ${ctx.raw.toFixed(2)} kWh`,
+                              `Cost: ₱${parseFloat(unit.cost || unit.consumption * 10).toFixed(2)}`,
+                              `${unit.floorName || `Floor ${unit.floorId}`} • ${unit.equipmentType || 'Aggregated'}`
+                            ];
+                          }
+                        }
+                      },
+                      legend: { display: false }
+                    },
+                    scales: {
+                      x: {
+                        ...chartOptions.scales.x,
+                        title: { 
+                          display: true,
+                          text: 'Cost',
+                          font: { size: 12, weight: 'bold' }
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                          font: { size: 11 }
+                        }
+                      },
+                      y: {
+                        ...chartOptions.scales.y,
+                        title: {
+                          display: true,
+                          text: 'Consumption (kWh)',
+                          font: { size: 12, weight: 'bold' }
+                        },
+                        ticks: { 
+                          autoSkip: false,
+                          font: { size: 11 },
+                          maxRotation: 0,
+                          minRotation: 0
+                        },
+                        beginAtZero: true
+                      }
+                    }
+                  }}
+                />
               </div>
-            ))}
+            ) : (
+              <div className="text-sm text-gray-500 p-4">No consuming units data available</div>
+            )}
           </div>
         </div>
       </div>
@@ -1410,10 +1453,9 @@ const Dashboard = ({ statistics, units, filters }) => {
               {floorAnalytics && floorAnalytics.floor_analytics && floorAnalytics.floor_analytics.length > 0 ? (
                 <div className="space-y-2">
                   {floorAnalytics.floor_analytics
-                    .filter(floor => floor.peak_hour && floor.peak_hour.total_energy > 0)
+                    .filter(floor => floor.floor && floor.floor > 0 && floor.peak_hour && floor.peak_hour.total_energy > 0) // Exclude Floor 0
                     .sort((a, b) => (b.peak_hour?.total_energy || 0) - (a.peak_hour?.total_energy || 0))
-                    .slice(0, 3)
-                    .map((floor) => (
+                    .map((floor) => ( // Show all valid floors (1, 2, 3), not just top 3
                       <div key={floor.floor} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                         <div>
                           <p className="font-medium text-gray-900">Floor {floor.floor}</p>
@@ -1431,21 +1473,23 @@ const Dashboard = ({ statistics, units, filters }) => {
                 </div>
               ) : staticDashboardData.staticPeakConsumptionAlerts && staticDashboardData.staticPeakConsumptionAlerts.length > 0 ? (
                 <div className="space-y-2">
-                  {staticDashboardData.staticPeakConsumptionAlerts.map((floor) => (
-                    <div key={floor.floor} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-900">Floor {floor.floor}</p>
-                        <p className="text-xs text-gray-600">
-                          Peak: {floor.peak_hour.hour}:00 ({floor.peak_hour.total_energy.toFixed(2)} Wh)
-                        </p>
+                  {staticDashboardData.staticPeakConsumptionAlerts
+                    .filter(floor => floor.floor && floor.floor > 0) // Exclude Floor 0 from static data too
+                    .map((floor) => (
+                      <div key={floor.floor} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-gray-900">Floor {floor.floor}</p>
+                          <p className="text-xs text-gray-600">
+                            Peak: {floor.peak_hour.hour}:00 ({floor.peak_hour.total_energy.toFixed(2)} Wh)
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-red-600">
+                            {floor.total_energy_kwh.toFixed(2)} kWh
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-red-600">
-                          {floor.total_energy_kwh.toFixed(2)} kWh
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 p-3">No peak consumption alerts available</div>

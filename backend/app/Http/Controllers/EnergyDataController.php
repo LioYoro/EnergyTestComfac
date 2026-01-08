@@ -190,7 +190,7 @@ class EnergyDataController extends Controller
 
         // Determine which dates to query based on filters
         $datesToQuery = [];
-        
+
         if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
             // For week view with specific weekday, get all matching weekdays
             $weekdayMap = [
@@ -245,14 +245,14 @@ class EnergyDataController extends Controller
                 ->where('date', $datesToQuery[0]);
             
             // Apply floor filter
-            if ($floor && $floor !== 'all') {
-                $summaryQuery->where('floor', $floor);
-            } else {
-                // Get aggregated data for all floors (floor = null means all floors combined)
-                $summaryQuery->whereNull('floor');
-            }
-            
-            $hourlyDataRaw = $summaryQuery
+        if ($floor && $floor !== 'all') {
+            $summaryQuery->where('floor', $floor);
+        } else {
+            // Get aggregated data for all floors (floor = null means all floors combined)
+            $summaryQuery->whereNull('floor');
+        }
+        
+        $hourlyDataRaw = $summaryQuery
                 ->selectRaw('
                     hour,
                     avg_current,
@@ -279,8 +279,8 @@ class EnergyDataController extends Controller
                     MAX(energy_wh) as max_energy
                 ')
                 ->groupBy('hour')
-                ->orderBy('hour', 'asc')
-                ->get();
+            ->orderBy('hour', 'asc')
+            ->get();
         }
         
         // Convert to collection format
@@ -472,13 +472,20 @@ class EnergyDataController extends Controller
         $weekday = $request->input('weekday', 'all');
         
         // Get all floors or specific floor
+        // Filter out Floor 0 (doesn't exist) - only include valid floors (1, 2, 3, etc.)
         $floors = [];
         if ($floor && $floor !== 'all') {
-            $floors = [(int)$floor];
+            $floorId = (int)$floor;
+            // Only add if it's a valid floor (greater than 0)
+            if ($floorId > 0) {
+                $floors = [$floorId];
+            }
         } else {
             $floors = EnergyData::select('floor')
                 ->distinct()
                 ->whereNotNull('floor')
+                ->where('floor', '>', 0) // Exclude Floor 0
+                ->orderBy('floor', 'asc') // Order by floor number to ensure consistent results
                 ->pluck('floor')
                 ->toArray();
         }
@@ -846,6 +853,7 @@ class EnergyDataController extends Controller
 
         // Group by floor and calculate consumption
         // Since we don't have individual unit IDs in energy_data, we'll group by floor
+        // Filter out Floor 0 (doesn't exist) and only include valid floors (1, 2, 3, etc.)
         $topFloors = (clone $query)
             ->selectRaw('
                 floor,
@@ -854,6 +862,7 @@ class EnergyDataController extends Controller
                 COUNT(*) as record_count
             ')
             ->whereNotNull('floor')
+            ->where('floor', '>', 0) // Exclude Floor 0
             ->groupBy('floor')
             ->orderBy('total_energy_wh', 'desc')
             ->limit($limit)

@@ -125,3 +125,21 @@ body {
   animation: slideUp 0.3s ease-out;
 }
 
+/* Force instant tooltip updates for Chart.js - no transitions or delays */
+.chartjs-tooltip,
+.chartjs-tooltip * {
+  transition: none !important;
+  animation: none !important;
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  transition-delay: 0ms !important;
+  animation-delay: 0ms !important;
+}
+
+/* Ensure tooltip container has no delays */
+#chartjs-tooltip,
+.chartjs-tooltip-box {
+  transition: none !important;
+  animation: none !important;
+  opacity: 1 !important;
+}

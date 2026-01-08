@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
-const StatisticsCards = ({ statistics, summary, filters = {} }) => {
+const StatisticsCards = ({ statistics, summary, filters = {}, hourlyData = null }) => {
   // Formatter to keep numbers readable and avoid overflow
   const formatNum = (value, maxDigits = 4) => {
     const num = Number(value) || 0;
@@ -10,61 +10,108 @@ const StatisticsCards = ({ statistics, summary, filters = {} }) => {
     });
   };
 
-  // Use backend summary data if available, otherwise use mock statistics
-  const totalEnergy = summary?.per_day?.total_energy 
-    ? summary.per_day.total_energy / 1000 // Convert Wh to kWh
-    : (statistics.totalConsumption || 0);
-  
-  const totalCost = summary?.per_day?.total_energy 
-    ? (summary.per_day.total_energy / 1000 * 10) // kWh * 10 PHP
-    : parseFloat(statistics.totalCost || 0);
-  
-  const avgCurrent = summary?.per_day?.avg_current || statistics.avgCurrent || '0.0';
-  const totalRecords = summary?.total_records || statistics.totalRecords || 0;
-  
-  // Calculate averages from backend data
-  const avgEnergyPerHour = summary?.per_hour?.avg_energy 
-    ? (summary.per_hour.avg_energy / 1000) // Convert Wh to kWh
-    : statistics.avgConsumption || 0;
-  
-  const avgEnergyPerMinute = summary?.per_minute?.avg_energy 
-    ? (summary.per_minute.avg_energy / 1000)
-    : 0;
+  // Always use statistics data (unit-based), not summary data
+  // BUT use summary data for avgCurrent since it comes from backend and respects filters
+  // Memoize to prevent data from changing over time
+  const stableStats = useMemo(() => {
+    // Use backend summary avg_current if available (respects filters), otherwise use statistics
+    // Check multiple possible paths for avg_current
+    let avgCurrentValue = 0;
+    
+    // Priority 1: Use summary per_day avg_current (most accurate, respects filters)
+    if (summary?.per_day?.avg_current !== undefined && summary?.per_day?.avg_current !== null && summary.per_day.avg_current > 0) {
+      avgCurrentValue = summary.per_day.avg_current;
+    } 
+    // Priority 2: Use summary per_hour avg_current
+    else if (summary?.per_hour?.avg_current !== undefined && summary?.per_hour?.avg_current !== null && summary.per_hour.avg_current > 0) {
+      avgCurrentValue = summary.per_hour.avg_current;
+    } 
+    // Priority 3: Use summary per_minute avg_current
+    else if (summary?.per_minute?.avg_current !== undefined && summary?.per_minute?.avg_current !== null && summary.per_minute.avg_current > 0) {
+      avgCurrentValue = summary.per_minute.avg_current;
+    } 
+    // Priority 4: Calculate from hourlyData if available
+    else if (hourlyData?.hourly_data && Array.isArray(hourlyData.hourly_data) && hourlyData.hourly_data.length > 0) {
+      // Calculate average current from hourly data
+      const currents = hourlyData.hourly_data
+        .map(h => parseFloat(h.avg_current))
+        .filter(c => !isNaN(c) && c > 0);
+      if (currents.length > 0) {
+        avgCurrentValue = currents.reduce((sum, c) => sum + c, 0) / currents.length;
+      }
+    }
+    // Priority 5: Use statistics avgCurrent as last resort
+    else if (statistics?.avgCurrent !== undefined && statistics?.avgCurrent !== null && statistics.avgCurrent > 0) {
+      avgCurrentValue = statistics.avgCurrent;
+    }
+    
+    // Ensure it's a number
+    avgCurrentValue = typeof avgCurrentValue === 'number' ? avgCurrentValue : parseFloat(avgCurrentValue) || 0;
+    
+    return {
+      totalUnits: statistics?.totalUnits || 0,
+      totalConsumption: statistics?.totalConsumption || 0,
+      totalCost: parseFloat(statistics?.totalCost || 0),
+      avgConsumption: statistics?.avgConsumption || 0,
+      avgCost: parseFloat(statistics?.avgCost || 0),
+      avgCurrent: avgCurrentValue,
+      consumptionRange: statistics?.consumptionRange || '0.0 - 0.0 kWh',
+      statusCounts: {
+        operational: statistics?.statusCounts?.operational || 0,
+        maintenance: statistics?.statusCounts?.maintenance || 0,
+        critical: statistics?.statusCounts?.critical || 0
+      }
+    };
+  }, [
+    statistics?.totalUnits,
+    statistics?.totalConsumption,
+    statistics?.totalCost,
+    statistics?.avgConsumption,
+    statistics?.avgCost,
+    statistics?.avgCurrent,
+    statistics?.consumptionRange,
+    statistics?.statusCounts?.operational,
+    statistics?.statusCounts?.maintenance,
+    statistics?.statusCounts?.critical,
+    summary?.per_day?.avg_current, // Include summary avg_current in dependencies
+    summary?.per_hour?.avg_current,
+    summary?.per_minute?.avg_current,
+    hourlyData?.hourly_data // Include hourlyData to recalculate if summary is missing
+  ]);
+
+  // Use stable statistics, not summary data
+  const totalEnergy = stableStats.totalConsumption;
+  const totalCost = stableStats.totalCost;
+  const avgCurrent = typeof stableStats.avgCurrent === 'number' 
+    ? stableStats.avgCurrent.toFixed(2) 
+    : stableStats.avgCurrent;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {/* Total Records / Units */}
+      {/* Total Units */}
       <div className="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-500">
-              {summary ? 'Total Records' : 'Total Units'}
-            </p>
+            <p className="text-sm font-medium text-gray-500">Total Units</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">
-              {summary ? totalRecords.toLocaleString() : (statistics.totalUnits || 0)}
+              {stableStats.totalUnits}
             </p>
           </div>
           <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-            <i className={`fas ${summary ? 'fa-database' : 'fa-cogs'} text-blue-600 text-xl`}></i>
+            <i className="fas fa-cogs text-blue-600 text-xl"></i>
           </div>
         </div>
         <div className="mt-4">
-          {summary ? (
-            <div className="text-sm text-gray-600">
-              <span>Date: {summary.date || 'N/A'}</span>
-            </div>
-          ) : (
           <div className="flex text-sm">
             <span className="text-gray-700 mr-4">
               <span className="location-marker bg-green-500"></span>
-              Operational: <span>{statistics.statusCounts?.operational || 0}</span>
+              Operational: <span>{stableStats.statusCounts.operational}</span>
             </span>
             <span className="text-gray-700">
               <span className="location-marker bg-yellow-500"></span>
-              Maintenance: <span>{statistics.statusCounts?.maintenance || 0}</span>
+              Maintenance: <span>{stableStats.statusCounts.maintenance}</span>
             </span>
           </div>
-          )}
         </div>
       </div>
       
@@ -90,21 +137,16 @@ const StatisticsCards = ({ statistics, summary, filters = {} }) => {
         </div>
       </div>
       
-      {/* Average Consumption */}
+      {/* Average Consumption per Unit */}
       <div className="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-500">
-              {summary ? 'Avg per Hour' : 'Avg per Unit'}
-            </p>
+            <p className="text-sm font-medium text-gray-500">Avg per Unit</p>
             <p className="text-2xl font-bold text-gray-900 mt-2">
-              {summary ? formatNum(avgEnergyPerHour, 4) : formatNum(statistics.avgConsumption || 0, 4)} <span className="text-base">kWh</span>
+              {formatNum(stableStats.avgConsumption, 4)} <span className="text-base">kWh</span>
             </p>
             <p className="text-lg font-semibold text-primary-600 mt-1">
-              ₱{summary 
-                ? parseFloat(avgEnergyPerHour * 10).toFixed(2)
-                : parseFloat(statistics.avgCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-              }
+              ₱{stableStats.avgCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
           <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
@@ -114,57 +156,35 @@ const StatisticsCards = ({ statistics, summary, filters = {} }) => {
         <div className="mt-4">
           <div className="flex items-center text-sm">
             <span className="text-gray-700">
-              {summary ? `Avg per Minute: ${formatNum(avgEnergyPerMinute, 4)} kWh` : `Range: ${statistics.consumptionRange || '0.0 - 0.0 kWh'}`}
+              Range: {stableStats.consumptionRange}
             </span>
           </div>
         </div>
       </div>
       
-      {/* Status Overview / Energy Breakdown */}
+      {/* Status Overview */}
       <div className="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            {summary ? (
-              <>
-                <p className="text-sm font-medium text-gray-500">Energy Breakdown</p>
-                <p className="text-xl font-bold text-green-600 mt-2">
-                  {summary.per_hour?.count || 0} <span className="text-sm text-gray-600">Hours</span>
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  {summary.per_minute?.count || 0} Minutes • {summary.per_second?.count || 0} Seconds
-                </p>
-                {filters.floor && filters.floor !== 'all' && (
-                  <p className="text-xs text-gray-500 mt-2">Filtered: Floor {filters.floor}</p>
-                )}
-                {filters.timeGranularity && (
-                  <p className="text-xs text-gray-500">Granularity: {filters.timeGranularity}</p>
-                )}
-              </>
-            ) : (
-              <>
             <p className="text-sm font-medium text-gray-500">Status Overview</p>
             <p className="text-xl font-bold text-green-600 mt-2">
-              {statistics.statusCounts?.operational || 0} <span className="text-sm text-gray-600">Operational</span>
+              {stableStats.statusCounts.operational} <span className="text-sm text-gray-600">Operational</span>
             </p>
             <p className="text-sm text-gray-600 mt-1">
-              {statistics.statusCounts?.critical || 0} Critical • {statistics.statusCounts?.maintenance || 0} Maintenance
+              {stableStats.statusCounts.critical} Critical • {stableStats.statusCounts.maintenance} Maintenance
             </p>
-              </>
-            )}
           </div>
           <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
-            <i className={`fas ${summary ? 'fa-clock' : 'fa-check-circle'} text-yellow-600 text-xl`}></i>
+            <i className="fas fa-check-circle text-yellow-600 text-xl"></i>
           </div>
         </div>
         <div className="mt-4">
-          {!summary && (
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
               className="bg-green-500 h-2 rounded-full" 
-              style={{ width: `${statistics.totalUnits > 0 ? ((statistics.statusCounts?.operational || 0) / statistics.totalUnits) * 100 : 0}%` }}
+              style={{ width: `${stableStats.totalUnits > 0 ? (stableStats.statusCounts.operational / stableStats.totalUnits) * 100 : 0}%` }}
             ></div>
           </div>
-          )}
         </div>
       </div>
     </div>
