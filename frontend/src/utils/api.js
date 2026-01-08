@@ -61,6 +61,49 @@ export const api = {
     const url = params.toString() ? `/energy/dashboard/floor-analytics?${params}` : '/energy/dashboard/floor-analytics';
     return apiCall(url);
   },
+  getFloorMetrics: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/floor-metrics?${params}` : '/energy/dashboard/floor-metrics';
+    return apiCall(url);
+  },
+  getBuildingMetrics: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/building-metrics?${params}` : '/energy/dashboard/building-metrics';
+    return apiCall(url);
+  },
+  getBranchMetrics: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/branch-metrics?${params}` : '/energy/dashboard/branch-metrics';
+    return apiCall(url);
+  },
+  getTopConsumingUnits: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.floor && filters.floor !== 'all') params.append('floor', filters.floor);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    if (filters.limit) params.append('limit', filters.limit);
+    const url = params.toString() ? `/energy/dashboard/top-units?${params}` : '/energy/dashboard/top-units';
+    return apiCall(url);
+  },
+  getConsumptionByEquipmentType: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.floor && filters.floor !== 'all') params.append('floor', filters.floor);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/equipment-type?${params}` : '/energy/dashboard/equipment-type';
+    return apiCall(url);
+  },
   getMinuteData: (date, hour) => {
     const params = new URLSearchParams();
     if (date) params.append('date', date);

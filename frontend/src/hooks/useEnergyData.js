@@ -31,16 +31,33 @@ export const useEnergyData = (filters = {}) => {
     const fetchAllData = async () => {
       setError(null);
       
-      // Use today's date as immediate fallback - don't wait for anything
-      const today = new Date();
-      const fallbackDate = today.toISOString().split('T')[0];
-      let dateToUse = filters.date || fallbackDate;
+      // Determine the date to use - prioritize filters.date, otherwise use first available date
+      let dateToUse = filters.date;
       
-      // Build filters with date
+      // If no date specified, fetch dates first to get the first available date
+      if (!dateToUse) {
+        try {
+          const datesResponse = await api.getAvailableDates();
+          const dates = datesResponse?.dates || getMockDates();
+          setAvailableDates(dates);
+          if (dates.length > 0) {
+            dateToUse = dates[0]; // Use first available date (earliest)
+          }
+        } catch (err) {
+          console.error('Error fetching dates:', err);
+          const mockDates = getMockDates();
+          setAvailableDates(mockDates);
+          if (mockDates.length > 0) {
+            dateToUse = mockDates[0];
+          }
+        }
+      }
+      
+      // Build filters with the determined date
       const filtersWithDate = { ...filters, date: dateToUse };
       
-      // Create cache key
-      const cacheKey = `${filtersWithDate.date || 'no-date'}_${filtersWithDate.floor || 'all'}_${filtersWithDate.timeGranularity || 'day'}_${filtersWithDate.weekday || 'all'}`;
+      // Create cache key - use the actual date, not 'no-date'
+      const cacheKey = `${dateToUse || 'no-date'}_${filtersWithDate.floor || 'all'}_${filtersWithDate.timeGranularity || 'day'}_${filtersWithDate.weekday || 'all'}`;
       
       // Check cache first for instant display
       const cachedHourlyData = hourlyDataCache.get(cacheKey);
@@ -58,51 +75,63 @@ export const useEnergyData = (filters = {}) => {
         setSummary(cachedSummary);
       }
       
-      // Fetch dates, hourly data, and summary ALL IN PARALLEL for maximum speed
+      // Fetch dates (if not already fetched), hourly data, and summary ALL IN PARALLEL
       const promises = [];
       
-      // Always fetch dates (lightweight, can run in parallel)
-      promises.push(
-        api.getAvailableDates()
-          .then(response => {
-            const dates = response?.dates || getMockDates();
-            setAvailableDates(dates);
-            // Update date if we got better dates and no date was specified
-            if (!filters.date && dates.length > 0) {
-              dateToUse = dates[0];
-            }
-            return dates;
-          })
-          .catch(err => {
-            console.error('Error fetching dates:', err);
-            const mockDates = getMockDates();
-            setAvailableDates(mockDates);
-            return mockDates;
-          })
-      );
+      // Fetch dates if not already fetched
+      if (!filters.date) {
+        promises.push(
+          api.getAvailableDates()
+            .then(response => {
+              const dates = response?.dates || getMockDates();
+              setAvailableDates(dates);
+              return dates;
+            })
+            .catch(err => {
+              console.error('Error fetching dates:', err);
+              const mockDates = getMockDates();
+              setAvailableDates(mockDates);
+              return mockDates;
+            })
+        );
+      } else {
+        // If date is specified, still fetch available dates for the dropdown
+        promises.push(
+          api.getAvailableDates()
+            .then(response => {
+              const dates = response?.dates || getMockDates();
+              setAvailableDates(dates);
+              return dates;
+            })
+            .catch(err => {
+              console.error('Error fetching dates:', err);
+              return [];
+            })
+        );
+      }
       
-      // Fetch hourly data in parallel (if needed)
+      // Fetch hourly data in parallel (if we have a date)
       if (dateToUse || filters.timeGranularity === 'week') {
         if (!cachedHourlyData) {
           promises.push(
             api.getHourlyData(filtersWithDate)
               .then(hourlyResult => {
-                if (hourlyResult) {
-                  hourlyDataCache.set(cacheKey, hourlyResult);
-                  if (hourlyDataCache.size > 50) {
-                    const firstKey = hourlyDataCache.keys().next().value;
-                    hourlyDataCache.delete(firstKey);
-                  }
-                  setHourlyData(hourlyResult);
+          if (hourlyResult) {
+            hourlyDataCache.set(cacheKey, hourlyResult);
+            if (hourlyDataCache.size > 50) {
+              const firstKey = hourlyDataCache.keys().next().value;
+              hourlyDataCache.delete(firstKey);
+            }
+            setHourlyData(hourlyResult);
                   setLoading(false);
-                }
+          }
                 return hourlyResult;
               })
               .catch(err => {
-                console.error('Error fetching hourly data:', err);
-                if (!cachedHourlyData) {
-                  setHourlyData(null);
-                }
+          console.error('Error fetching hourly data:', err);
+          if (!cachedHourlyData) {
+            setHourlyData(null);
+          }
                 setLoading(false);
                 return null;
               })
@@ -113,22 +142,22 @@ export const useEnergyData = (filters = {}) => {
       // Fetch summary in parallel (if needed)
       if (!cachedSummary) {
         promises.push(
-          api.getEnergySummary(filtersWithDate)
-            .then(data => {
+      api.getEnergySummary(filtersWithDate)
+        .then(data => {
               if (data) {
                 summaryCache.set(cacheKey, data);
                 if (summaryCache.size > 50) {
                   const firstKey = summaryCache.keys().next().value;
                   summaryCache.delete(firstKey);
                 }
-                setSummary(data);
+          setSummary(data);
               }
               return data;
-            })
-            .catch(err => {
-              console.error('Error fetching summary:', err);
-              setError(err?.message || 'Failed to fetch summary');
-              setSummary(null);
+        })
+        .catch(err => {
+          console.error('Error fetching summary:', err);
+          setError(err?.message || 'Failed to fetch summary');
+          setSummary(null);
               return null;
             })
         );
@@ -201,7 +230,7 @@ export const useWeeklyPeakHours = (filters = {}) => {
     }
     
     // Fetch immediately if not cached
-    setLoading(true);
+      setLoading(true);
     api.getWeeklyPeakHours(filters)
       .then(data => {
         if (data) {
@@ -210,7 +239,7 @@ export const useWeeklyPeakHours = (filters = {}) => {
             const firstKey = weeklyPeakHoursCache.keys().next().value;
             weeklyPeakHoursCache.delete(firstKey);
           }
-          setWeeklyPeakHours(data);
+        setWeeklyPeakHours(data);
         }
         setLoading(false);
       })
@@ -245,7 +274,7 @@ export const useFloorAnalytics = (filters = {}) => {
     }
     
     // Fetch immediately if not cached
-    setLoading(true);
+      setLoading(true);
     api.getFloorAnalytics(filters)
       .then(data => {
         if (data) {
@@ -254,7 +283,7 @@ export const useFloorAnalytics = (filters = {}) => {
             const firstKey = floorAnalyticsCache.keys().next().value;
             floorAnalyticsCache.delete(firstKey);
           }
-          setFloorAnalytics(data);
+        setFloorAnalytics(data);
         }
         setLoading(false);
       })
@@ -268,5 +297,203 @@ export const useFloorAnalytics = (filters = {}) => {
   return { floorAnalytics, loading };
 };
 
+// Cache for floor metrics to prevent data from disappearing
+const floorMetricsCache = new Map();
 
+// Hook for fetching floor metrics from real data
+export const useFloorMetrics = (filters = {}) => {
+  const [floorMetrics, setFloorMetrics] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Create cache key
+    const cacheKey = `${filters.date || 'no-date'}_${filters.floor || 'all'}_${filters.timeGranularity || 'day'}_${filters.weekday || 'all'}`;
+    
+    // Check cache first - keep data persistent
+    const cachedData = floorMetricsCache.get(cacheKey);
+    if (cachedData) {
+      setFloorMetrics(cachedData);
+      setLoading(false);
+      return; // Use cached data immediately, no async needed
+    }
+    
+    // Fetch immediately if not cached
+    const fetchFloorMetrics = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getFloorMetrics(filters);
+        if (data) {
+          // Cache the data to prevent it from disappearing
+          floorMetricsCache.set(cacheKey, data);
+          if (floorMetricsCache.size > 50) {
+            const firstKey = floorMetricsCache.keys().next().value;
+            floorMetricsCache.delete(firstKey);
+          }
+          setFloorMetrics(data);
+        }
+      } catch (err) {
+        console.error('Error fetching floor metrics:', err);
+        // Don't set to null - keep previous data if available
+        // Only set to null if we never had data
+        if (!floorMetrics) {
+          setFloorMetrics(null);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchFloorMetrics();
+  }, [filters.date, filters.floor, filters.timeGranularity, filters.weekday]);
+
+  return { floorMetrics, loading };
+};
+
+// Cache for building metrics
+const buildingMetricsCache = new Map();
+
+// Hook for fetching building metrics from real data
+export const useBuildingMetrics = (filters = {}) => {
+  const [buildingMetrics, setBuildingMetrics] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Create cache key
+    const cacheKey = `${filters.date || 'no-date'}_${filters.floor || 'all'}_${filters.timeGranularity || 'day'}_${filters.weekday || 'all'}`;
+    
+    // Check cache first - keep data persistent
+    const cachedData = buildingMetricsCache.get(cacheKey);
+    if (cachedData) {
+      setBuildingMetrics(cachedData);
+      setLoading(false);
+      return;
+    }
+    
+    const fetchBuildingMetrics = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getBuildingMetrics(filters);
+        if (data) {
+          buildingMetricsCache.set(cacheKey, data);
+          if (buildingMetricsCache.size > 50) {
+            const firstKey = buildingMetricsCache.keys().next().value;
+            buildingMetricsCache.delete(firstKey);
+          }
+          setBuildingMetrics(data);
+        }
+      } catch (err) {
+        console.error('Error fetching building metrics:', err);
+        // Don't clear existing data on error
+        if (!buildingMetrics) {
+          setBuildingMetrics(null);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchBuildingMetrics();
+  }, [filters.date, filters.floor, filters.timeGranularity, filters.weekday]);
+
+  return { buildingMetrics, loading };
+};
+
+// Cache for branch metrics
+const branchMetricsCache = new Map();
+
+// Hook for fetching branch metrics from real data
+export const useBranchMetrics = (filters = {}) => {
+  const [branchMetrics, setBranchMetrics] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Create cache key
+    const cacheKey = `${filters.date || 'no-date'}_${filters.floor || 'all'}_${filters.timeGranularity || 'day'}_${filters.weekday || 'all'}`;
+    
+    // Check cache first - keep data persistent
+    const cachedData = branchMetricsCache.get(cacheKey);
+    if (cachedData) {
+      setBranchMetrics(cachedData);
+      setLoading(false);
+      return;
+    }
+    
+    const fetchBranchMetrics = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getBranchMetrics(filters);
+        if (data) {
+          branchMetricsCache.set(cacheKey, data);
+          if (branchMetricsCache.size > 50) {
+            const firstKey = branchMetricsCache.keys().next().value;
+            branchMetricsCache.delete(firstKey);
+          }
+          setBranchMetrics(data);
+        }
+      } catch (err) {
+        console.error('Error fetching branch metrics:', err);
+        // Don't clear existing data on error
+        if (!branchMetrics) {
+          setBranchMetrics(null);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchBranchMetrics();
+  }, [filters.date, filters.floor, filters.timeGranularity, filters.weekday]);
+
+  return { branchMetrics, loading };
+};
+
+// Hook for fetching top consuming units from real data
+export const useTopConsumingUnits = (filters = {}) => {
+  const [topUnits, setTopUnits] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchTopUnits = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getTopConsumingUnits(filters);
+        setTopUnits(data);
+      } catch (err) {
+        console.error('Error fetching top consuming units:', err);
+        setTopUnits(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchTopUnits();
+  }, [filters.date, filters.floor, filters.timeGranularity, filters.weekday]);
+
+  return { topUnits, loading };
+};
+
+// Hook for fetching consumption by equipment type from real data
+export const useConsumptionByEquipmentType = (filters = {}) => {
+  const [consumptionByType, setConsumptionByType] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchConsumptionByType = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getConsumptionByEquipmentType(filters);
+        setConsumptionByType(data);
+      } catch (err) {
+        console.error('Error fetching consumption by equipment type:', err);
+        setConsumptionByType(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchConsumptionByType();
+  }, [filters.date, filters.floor, filters.timeGranularity, filters.weekday]);
+
+  return { consumptionByType, loading };
+};
 

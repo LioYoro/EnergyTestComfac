@@ -101,15 +101,24 @@ class EnergyDataController extends Controller
             $totalRecords = $dailySummary->total_records;
             $avgCurrentDay = (float) $dailySummary->avg_current;
             $totalEnergyDay = (float) $dailySummary->total_energy;
-            $minuteCount = $dailySummary->minute_count;
+            
+            // Calculate correct counts: distinct hours and minutes
+            // Use COUNT(DISTINCT) for accurate results (distinct()->count() doesn't work correctly in SQLite)
+            $hourCount = (int) (clone $query)->selectRaw('COUNT(DISTINCT hour) as cnt')->value('cnt');
+            $minuteCount = (int) (clone $query)->selectRaw('COUNT(DISTINCT minute) as cnt')->value('cnt');
+            
+            // Use stored averages if available, otherwise calculate
             $avgCurrentPerMinute = (float) $dailySummary->avg_current_per_minute;
-            $hourCount = $dailySummary->hour_count;
             $avgCurrentPerHour = (float) $dailySummary->avg_current_per_hour;
+            
+            // Ensure counts are valid (at least 1)
+            $hourCount = max(1, $hourCount);
+            $minuteCount = max(1, $minuteCount);
             
             // Derived averages
             $avgEnergyPerSecond = $totalRecords > 0 ? $totalEnergyDay / $totalRecords : 0.0;
-            $avgEnergyPerMinute = $totalEnergyDay / $minuteCount;
-            $avgEnergyPerHour = $totalEnergyDay / $hourCount;
+            $avgEnergyPerMinute = $minuteCount > 0 ? $totalEnergyDay / $minuteCount : 0.0;
+            $avgEnergyPerHour = $hourCount > 0 ? $totalEnergyDay / $hourCount : 0.0;
         } else {
             // Fallback to raw query ONLY if summary table is empty (first time)
             $totalRecords = (clone $query)->count();
@@ -166,31 +175,24 @@ class EnergyDataController extends Controller
     }
 
     /**
-     * Get hourly data for a specific day with filters.
-     * Accepts filters: floor, timeGranularity, weekday
+     * Get hourly data with filters.
+     * Properly handles: date, floor, timeGranularity, weekday
+     * Returns aggregated hourly data and accurate peak hour
      */
     public function getHourlyData(Request $request)
     {
         date_default_timezone_set('Asia/Manila');
         
-        // Optimize: Get date efficiently using index
         $date = $request->input('date');
-        if (!$date) {
-            // Use a quick query with limit instead of min() which scans all rows
-            $firstRecord = EnergyData::select('date')->orderBy('date', 'asc')->limit(1)->first();
-            $date = $firstRecord ? $firstRecord->date : null;
-        }
-        
         $floor = $request->input('floor');
         $timeGranularity = $request->input('timeGranularity', 'day');
         $weekday = $request->input('weekday', 'all');
 
-        // Build base query with filters - order matters for index usage
-        $query = EnergyData::query();
-
-        // Apply date filter FIRST (most selective, uses index)
+        // Determine which dates to query based on filters
+        $datesToQuery = [];
+        
         if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
-            // Filter by weekday for week view
+            // For week view with specific weekday, get all matching weekdays
             $weekdayMap = [
                 'sunday' => 0,
                 'monday' => 1,
@@ -202,53 +204,86 @@ class EnergyDataController extends Controller
             ];
             $dayNumber = $weekdayMap[$weekday] ?? null;
             if ($dayNumber !== null) {
-                // Use date index first, then filter by weekday
-                $query->whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber]);
-                // If no date provided, find a matching date for the weekday
-                if (!$date) {
-                    $date = EnergyData::whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber])
-                        ->min('date');
-                }
+                $datesToQuery = EnergyData::whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber])
+                    ->distinct()
+                    ->pluck('date')
+                    ->toArray();
             }
-        } else if ($date) {
-            // Use index on date column
-            $query->where('date', $date);
-        }
-
-        // Apply floor filter AFTER date (uses composite index)
-        if ($floor && $floor !== 'all') {
-            $query->where('floor', $floor);
-        }
-
-        // Use pre-aggregated hourly_summary table for INSTANT results
-        // This table has pre-calculated hourly aggregations, making queries 30x+ faster
-        // Query time: ~10ms instead of 300ms+ with 2M records
-        // Only query hourly_summary if we have a date
-        if (!$date) {
-            // If no date, try to get first available date
-            $firstRecord = DailySummary::select('date')->orderBy('date', 'asc')->limit(1)->first();
-            $date = $firstRecord ? $firstRecord->date : null;
-        }
-        
-        $summaryQuery = DB::table('hourly_summary');
-        if ($date) {
-            $summaryQuery->where('date', $date);
-        }
-        
-        if ($floor && $floor !== 'all') {
-            // Get data for specific floor
-            $summaryQuery->where('floor', $floor);
+        } elseif ($date) {
+            // Single date query
+            $datesToQuery = [$date];
         } else {
-            // Get aggregated data for all floors (floor = null means all floors combined)
-            $summaryQuery->whereNull('floor');
+            // No date specified, get first available date
+            $firstRecord = DailySummary::select('date')->orderBy('date', 'asc')->limit(1)->first();
+            if ($firstRecord) {
+                $datesToQuery = [$firstRecord->date];
+                $date = $firstRecord->date; // Set for response
+            }
+        }
+
+        // If no dates found, return empty response
+        if (empty($datesToQuery)) {
+            return response()->json([
+                'date' => $date,
+                'hourly_data' => [],
+                'peak_hour' => [
+                    'hour' => null,
+                    'avg_current' => 0,
+                    'total_energy' => 0,
+                    'formatted_time' => null,
+                    'formatted_datetime' => null,
+                ],
+            ]);
+        }
+
+        // Query hourly_summary table for fast results
+        // For single date, use summary table directly
+        // For multiple dates, we need to aggregate properly
+        if (count($datesToQuery) === 1) {
+            // Single date - use summary table directly
+            $summaryQuery = DB::table('hourly_summary')
+                ->where('date', $datesToQuery[0]);
+            
+            // Apply floor filter
+            if ($floor && $floor !== 'all') {
+                $summaryQuery->where('floor', $floor);
+            } else {
+                // Get aggregated data for all floors (floor = null means all floors combined)
+                $summaryQuery->whereNull('floor');
+            }
+            
+            $hourlyDataRaw = $summaryQuery
+                ->selectRaw('
+                    hour,
+                    avg_current,
+                    total_energy,
+                    max_current,
+                    max_energy
+                ')
+                ->orderBy('hour', 'asc')
+                ->get();
+        } else {
+            // Multiple dates - aggregate from raw data to ensure accuracy
+            $query = EnergyData::whereIn('date', $datesToQuery);
+            
+            if ($floor && $floor !== 'all') {
+                $query->where('floor', $floor);
+            }
+            
+            $hourlyDataRaw = $query
+                ->selectRaw('
+                    hour,
+                    AVG(current_a) as avg_current,
+                    SUM(energy_wh) as total_energy,
+                    MAX(current_a) as max_current,
+                    MAX(energy_wh) as max_energy
+                ')
+                ->groupBy('hour')
+                ->orderBy('hour', 'asc')
+                ->get();
         }
         
-        $hourlyDataRaw = $summaryQuery
-            ->select('hour', 'avg_current', 'total_energy', 'max_current', 'max_energy')
-            ->orderBy('hour', 'asc')
-            ->get();
-        
-        // Convert to collection format matching EnergyData structure
+        // Convert to collection format
         $hourlyData = $hourlyDataRaw->map(function($item) {
             return (object)[
                 'hour' => (int)$item->hour,
@@ -259,9 +294,15 @@ class EnergyDataController extends Controller
             ];
         });
         
-        // Fallback to raw query ONLY if summary table is completely empty (first time)
-        if ($hourlyData->isEmpty() && $date) {
-            $hourlyData = (clone $query)
+        // Fallback to raw query if summary table is empty
+        if ($hourlyData->isEmpty() && !empty($datesToQuery)) {
+            $query = EnergyData::whereIn('date', $datesToQuery);
+            
+            if ($floor && $floor !== 'all') {
+                $query->where('floor', $floor);
+            }
+            
+            $hourlyData = $query
                 ->selectRaw('
                     hour,
                     AVG(current_a) as avg_current,
@@ -274,33 +315,41 @@ class EnergyDataController extends Controller
                 ->get();
         }
 
-        // Find peak hour
+        // Find peak hour (hour with highest total_energy)
         $peakHour = $hourlyData->sortByDesc('total_energy')->first();
 
-        // Format peak hour with full date/time in 12-hour format
+        // Format peak hour with full date/time
         $formattedPeakHour = null;
         $formattedPeakDateTime = null;
         
         if ($peakHour && $peakHour->hour !== null) {
             $peakHourValue = $peakHour->hour;
             
-            // Determine the date for peak hour
-            $peakDate = $date;
-            if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
-                // Find first matching date for the weekday
-                $weekdayMap = [
-                    'sunday' => 0,
-                    'monday' => 1,
-                    'tuesday' => 2,
-                    'wednesday' => 3,
-                    'thursday' => 4,
-                    'friday' => 5,
-                    'saturday' => 6
-                ];
-                $dayNumber = $weekdayMap[$weekday] ?? null;
-                if ($dayNumber !== null) {
-                    $peakDate = EnergyData::whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber])
-                        ->min('date');
+            // Determine the date for peak hour display
+            // Use the first date from datesToQuery, or the specific date
+            $peakDate = $date ?? ($datesToQuery[0] ?? null);
+            
+            // If week view with weekday, find the actual date where peak occurred
+            if ($timeGranularity === 'week' && $weekday && $weekday !== 'all' && !empty($datesToQuery)) {
+                // Find the date where this hour had the highest energy for this weekday
+                $peakDateQuery = DB::table('hourly_summary')
+                    ->whereIn('date', $datesToQuery)
+                    ->where('hour', $peakHourValue);
+                
+                if ($floor && $floor !== 'all') {
+                    $peakDateQuery->where('floor', $floor);
+                } else {
+                    $peakDateQuery->whereNull('floor');
+                }
+                
+                $peakDateRecord = $peakDateQuery
+                    ->orderBy('total_energy', 'desc')
+                    ->first();
+                
+                if ($peakDateRecord) {
+                    $peakDate = $peakDateRecord->date;
+                } else {
+                    $peakDate = $datesToQuery[0];
                 }
             }
             
@@ -310,7 +359,7 @@ class EnergyDataController extends Controller
                 $timestamp = strtotime($peakDateTime);
                 
                 if ($timestamp) {
-                    // Format: "Monday, January 6, 2026 at 02:00 PM"
+                    // Format: "Thursday, January 8, 2026 at 5:00 PM"
                     $formattedPeakDateTime = date('l, F j, Y \a\t g:i A', $timestamp);
                     $formattedPeakHour = date('g:i A', $timestamp);
                 }
@@ -318,8 +367,8 @@ class EnergyDataController extends Controller
         }
 
         return response()->json([
-            'date' => $date,
-            'hourly_data' => $hourlyData,
+            'date' => $date ?? ($datesToQuery[0] ?? null),
+            'hourly_data' => $hourlyData->values(), // Reset array keys
             'peak_hour' => [
                 'hour' => $peakHour->hour ?? null,
                 'avg_current' => round($peakHour->avg_current ?? 0, 2),
@@ -551,6 +600,280 @@ class EnergyDataController extends Controller
 
         return response()->json([
             'dates' => $dates,
+        ]);
+    }
+
+    /**
+     * Get consumption by equipment type from real database data
+     * Accepts filters: date, floor, timeGranularity, weekday
+     */
+    public function getConsumptionByEquipmentType(Request $request)
+    {
+        date_default_timezone_set('Asia/Manila');
+        
+        $date = $request->input('date');
+        $floor = $request->input('floor');
+        $timeGranularity = $request->input('timeGranularity', 'day');
+        $weekday = $request->input('weekday', 'all');
+
+        // Build query with filters
+        $query = EnergyData::query();
+
+        // Apply date filter
+        if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
+            $weekdayMap = [
+                'sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3,
+                'thursday' => 4, 'friday' => 5, 'saturday' => 6
+            ];
+            $dayNumber = $weekdayMap[$weekday] ?? null;
+            if ($dayNumber !== null) {
+                $query->whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber]);
+            }
+        } elseif ($date) {
+            $query->where('date', $date);
+        }
+
+        // Apply floor filter
+        if ($floor && $floor !== 'all') {
+            $query->where('floor', $floor);
+        }
+
+        // Get total energy consumption (in kWh)
+        $totalEnergy = (float) (clone $query)->sum('energy_wh') / 1000;
+
+        // For now, return total consumption
+        // Equipment type breakdown would require a units table with equipment types
+        // This is a placeholder - you may need to join with units table if available
+        return response()->json([
+            'total_consumption_kwh' => round($totalEnergy, 2),
+            'consumption_by_type' => [
+                // This would need to be calculated from units table if available
+                // For now, return total as single category
+            ]
+        ]);
+    }
+
+    /**
+     * Get floor metrics from real database data
+     * Returns consumption, cost, unit count for each floor
+     */
+    public function getFloorMetrics(Request $request)
+    {
+        date_default_timezone_set('Asia/Manila');
+        
+        $date = $request->input('date');
+        $timeGranularity = $request->input('timeGranularity', 'day');
+        $weekday = $request->input('weekday', 'all');
+
+        // Get all floors
+        $floors = EnergyData::select('floor')
+            ->distinct()
+            ->whereNotNull('floor')
+            ->orderBy('floor', 'asc')
+            ->pluck('floor');
+
+        $floorMetrics = [];
+
+        foreach ($floors as $floorId) {
+            $query = EnergyData::where('floor', $floorId);
+
+            // Apply date filter
+            if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
+                $weekdayMap = [
+                    'sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3,
+                    'thursday' => 4, 'friday' => 5, 'saturday' => 6
+                ];
+                $dayNumber = $weekdayMap[$weekday] ?? null;
+                if ($dayNumber !== null) {
+                    $query->whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber]);
+                }
+            } elseif ($date) {
+                $query->where('date', $date);
+            }
+
+            // Calculate metrics from real data
+            $totalEnergy = (float) (clone $query)->sum('energy_wh') / 1000; // Convert to kWh
+            $totalCost = $totalEnergy * 10; // PHP 10 per kWh
+            $totalRecords = (clone $query)->count();
+            $avgCurrent = (float) (clone $query)->avg('current_a');
+
+            // Estimate unit count (this is approximate - would need actual units table)
+            // For now, use a reasonable estimate based on data points
+            $estimatedUnits = max(1, (int)($totalRecords / 86400)); // Rough estimate: records per day / seconds per day
+
+            $floorMetrics[] = [
+                'floor_id' => $floorId,
+                'floor_name' => "Floor {$floorId}",
+                'total_consumption_kwh' => round($totalEnergy, 2),
+                'total_cost' => round($totalCost, 2),
+                'total_units' => $estimatedUnits,
+                'avg_current' => round($avgCurrent, 2),
+                'total_records' => $totalRecords
+            ];
+        }
+
+        return response()->json([
+            'floor_metrics' => $floorMetrics
+        ]);
+    }
+
+    /**
+     * Get building metrics from real database data
+     */
+    public function getBuildingMetrics(Request $request)
+    {
+        date_default_timezone_set('Asia/Manila');
+        
+        $date = $request->input('date');
+        $timeGranularity = $request->input('timeGranularity', 'day');
+        $weekday = $request->input('weekday', 'all');
+
+        // Since we only have floor data, aggregate all floors as one building
+        $query = EnergyData::query();
+
+        // Apply date filter
+        if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
+            $weekdayMap = [
+                'sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3,
+                'thursday' => 4, 'friday' => 5, 'saturday' => 6
+            ];
+            $dayNumber = $weekdayMap[$weekday] ?? null;
+            if ($dayNumber !== null) {
+                $query->whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber]);
+            }
+        } elseif ($date) {
+            $query->where('date', $date);
+        }
+
+        $totalEnergy = (float) (clone $query)->sum('energy_wh') / 1000;
+        $totalCost = $totalEnergy * 10;
+        $totalRecords = (clone $query)->count();
+        $estimatedUnits = max(1, (int)($totalRecords / 86400));
+
+        return response()->json([
+            'building_metrics' => [[
+                'building_id' => 1,
+                'building_name' => 'Main Building',
+                'total_consumption_kwh' => round($totalEnergy, 2),
+                'total_cost' => round($totalCost, 2),
+                'total_units' => $estimatedUnits,
+                'total_floors' => EnergyData::select('floor')->distinct()->whereNotNull('floor')->count()
+            ]]
+        ]);
+    }
+
+    /**
+     * Get branch metrics from real database data
+     */
+    public function getBranchMetrics(Request $request)
+    {
+        date_default_timezone_set('Asia/Manila');
+        
+        $date = $request->input('date');
+        $timeGranularity = $request->input('timeGranularity', 'day');
+        $weekday = $request->input('weekday', 'all');
+
+        // Since we only have one location, aggregate all as one branch
+        $query = EnergyData::query();
+
+        // Apply date filter
+        if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
+            $weekdayMap = [
+                'sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3,
+                'thursday' => 4, 'friday' => 5, 'saturday' => 6
+            ];
+            $dayNumber = $weekdayMap[$weekday] ?? null;
+            if ($dayNumber !== null) {
+                $query->whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber]);
+            }
+        } elseif ($date) {
+            $query->where('date', $date);
+        }
+
+        $totalEnergy = (float) (clone $query)->sum('energy_wh') / 1000;
+        $totalCost = $totalEnergy * 10;
+        $totalRecords = (clone $query)->count();
+        $estimatedUnits = max(1, (int)($totalRecords / 86400));
+
+        return response()->json([
+            'branch_metrics' => [[
+                'branch_id' => 1,
+                'branch_name' => 'Main Branch',
+                'total_consumption_kwh' => round($totalEnergy, 2),
+                'total_cost' => round($totalCost, 2),
+                'total_units' => $estimatedUnits,
+                'total_buildings' => 1,
+                'total_floors' => EnergyData::select('floor')->distinct()->whereNotNull('floor')->count()
+            ]]
+        ]);
+    }
+
+    /**
+     * Get top consuming units from real database data
+     * Returns top N units based on actual energy consumption
+     */
+    public function getTopConsumingUnits(Request $request)
+    {
+        date_default_timezone_set('Asia/Manila');
+        
+        $date = $request->input('date');
+        $floor = $request->input('floor');
+        $timeGranularity = $request->input('timeGranularity', 'day');
+        $weekday = $request->input('weekday', 'all');
+        $limit = (int) $request->input('limit', 5);
+
+        // Build query
+        $query = EnergyData::query();
+
+        // Apply date filter
+        if ($timeGranularity === 'week' && $weekday && $weekday !== 'all') {
+            $weekdayMap = [
+                'sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3,
+                'thursday' => 4, 'friday' => 5, 'saturday' => 6
+            ];
+            $dayNumber = $weekdayMap[$weekday] ?? null;
+            if ($dayNumber !== null) {
+                $query->whereRaw("CAST(strftime('%w', date) AS INTEGER) = ?", [$dayNumber]);
+            }
+        } elseif ($date) {
+            $query->where('date', $date);
+        }
+
+        // Apply floor filter
+        if ($floor && $floor !== 'all') {
+            $query->where('floor', $floor);
+        }
+
+        // Group by floor and calculate consumption
+        // Since we don't have individual unit IDs in energy_data, we'll group by floor
+        $topFloors = (clone $query)
+            ->selectRaw('
+                floor,
+                SUM(energy_wh) as total_energy_wh,
+                AVG(current_a) as avg_current,
+                COUNT(*) as record_count
+            ')
+            ->whereNotNull('floor')
+            ->groupBy('floor')
+            ->orderBy('total_energy_wh', 'desc')
+            ->limit($limit)
+            ->get();
+
+        $topUnits = $topFloors->map(function($floor, $index) {
+            return [
+                'id' => $floor->floor,
+                'name' => "Floor {$floor->floor} Aggregated",
+                'floor_id' => $floor->floor,
+                'floor_name' => "Floor {$floor->floor}",
+                'consumption' => round($floor->total_energy_wh / 1000, 2), // kWh
+                'cost' => round(($floor->total_energy_wh / 1000) * 10, 2), // PHP
+                'avg_current' => round($floor->avg_current, 2),
+                'record_count' => $floor->record_count
+            ];
+        });
+
+        return response()->json([
+            'top_units' => $topUnits
         ]);
     }
 

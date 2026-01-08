@@ -46,18 +46,16 @@ class PopulateDailySummary extends Command
                 $avgCurrent = (float) $query->avg('current_a');
                 $totalEnergy = (float) $query->sum('energy_wh');
                 
-                // Minute count
-                $minuteCount = (clone $query)
-                    ->select('minute')
-                    ->distinct()
-                    ->count();
+                // Minute count - use COUNT(DISTINCT) for accurate results
+                $minuteCount = (int) (clone $query)
+                    ->selectRaw('COUNT(DISTINCT minute) as cnt')
+                    ->value('cnt');
                 $minuteCount = max(1, $minuteCount);
                 
-                // Hour count
-                $hourCount = (clone $query)
-                    ->select('hour')
-                    ->distinct()
-                    ->count();
+                // Hour count - use COUNT(DISTINCT) for accurate results
+                $hourCount = (int) (clone $query)
+                    ->selectRaw('COUNT(DISTINCT hour) as cnt')
+                    ->value('cnt');
                 $hourCount = max(1, $hourCount);
                 
                 // Per-minute average
