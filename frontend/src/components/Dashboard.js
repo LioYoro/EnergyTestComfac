@@ -1330,6 +1330,7 @@ const Dashboard = ({ statistics, units, filters }) => {
               </h4>
               <div className="space-y-2">
                 {staticDashboardData.floorMetrics
+                  .filter(floor => floor.floorId && floor.floorId > 0) // Exclude Floor 0
                   .sort((a, b) => {
                     const avgA = parseFloat(a.totalConsumption) / (a.totalUnits || 1);
                     const avgB = parseFloat(b.totalConsumption) / (b.totalUnits || 1);
@@ -1367,6 +1368,7 @@ const Dashboard = ({ statistics, units, filters }) => {
               </h4>
               <div className="space-y-2">
                 {staticDashboardData.floorMetrics
+                  .filter(floor => floor.floorId && floor.floorId > 0) // Exclude Floor 0
                   .sort((a, b) => parseFloat(b.totalCost) - parseFloat(a.totalCost))
                   .slice(0, 3)
                   .map((floor, index) => (

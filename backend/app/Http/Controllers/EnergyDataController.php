@@ -672,10 +672,11 @@ class EnergyDataController extends Controller
         $timeGranularity = $request->input('timeGranularity', 'day');
         $weekday = $request->input('weekday', 'all');
 
-        // Get all floors
+        // Get all floors - exclude Floor 0 (doesn't exist)
         $floors = EnergyData::select('floor')
             ->distinct()
             ->whereNotNull('floor')
+            ->where('floor', '>', 0) // Exclude Floor 0
             ->orderBy('floor', 'asc')
             ->pluck('floor');
 
