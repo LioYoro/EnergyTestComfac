@@ -169,12 +169,13 @@ export const api = {
       return null;
     }
   },
-  getBuildingMetrics: async (id) => {
-    try {
-      return await apiCall(`/buildings/${id}/metrics`);
-    } catch {
-      return null;
-    }
+  getBuildingMetrics: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/building-metrics?${params}` : '/energy/dashboard/building-metrics';
+    return apiCall(url);
   },
 
   // Floors
@@ -200,12 +201,13 @@ export const api = {
       return null;
     }
   },
-  getFloorMetrics: async (id) => {
-    try {
-      return await apiCall(`/floors/${id}/metrics`);
-    } catch {
-      return null;
-    }
+  getFloorMetrics: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.date) params.append('date', filters.date);
+    if (filters.timeGranularity) params.append('timeGranularity', filters.timeGranularity);
+    if (filters.weekday && filters.weekday !== 'all') params.append('weekday', filters.weekday);
+    const url = params.toString() ? `/energy/dashboard/floor-metrics?${params}` : '/energy/dashboard/floor-metrics';
+    return apiCall(url);
   },
 
   // Units/Equipment
