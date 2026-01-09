@@ -68,14 +68,16 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
         
         {/* Floor Filter - Primary Filter */}
         <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-500 mb-2">
+          <label htmlFor="floor-filter" className="block text-xs font-medium text-gray-500 mb-2">
             <i className="fas fa-layer-group mr-1"></i>
             Floor
           </label>
           <select 
+            id="floor-filter"
             value={filters.floor || 'all'}
             onChange={handleFloorChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm bg-white"
+            aria-label="Select floor filter"
           >
             <option value="all">All Floors</option>
             {powerPlantData.floors.map(floor => (
@@ -86,14 +88,16 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
 
         {/* Time Granularity */}
         <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-500 mb-2">
+          <label htmlFor="time-granularity-filter" className="block text-xs font-medium text-gray-500 mb-2">
             <i className="fas fa-clock mr-1"></i>
             Time Granularity
           </label>
           <select
+            id="time-granularity-filter"
             value={filters.timeGranularity || 'day'}
             onChange={(e) => onFilterChange({ ...filters, timeGranularity: e.target.value })}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm bg-white"
+            aria-label="Select time granularity"
           >
             <option value="day">Per Day</option>
             <option value="week">Per Week</option>
@@ -103,14 +107,16 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
         {/* Day of Week Filter (only for Per Week) */}
         {filters.timeGranularity === 'week' && (
           <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-500 mb-2">
+            <label htmlFor="weekday-filter" className="block text-xs font-medium text-gray-500 mb-2">
               <i className="fas fa-calendar-day mr-1"></i>
               Day of Week
             </label>
             <select
+              id="weekday-filter"
               value={filters.weekday || 'all'}
               onChange={(e) => onFilterChange({ ...filters, weekday: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm bg-white"
+              aria-label="Select day of week"
             >
               <option value="all">All Days</option>
               <option value="monday">Monday</option>
@@ -126,11 +132,13 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
         
         {/* Unit Type Filter */}
         <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-500 mb-2">Equipment Type</label>
+          <label htmlFor="equipment-type-filter" className="block text-xs font-medium text-gray-500 mb-2">Equipment Type</label>
           <select 
+            id="equipment-type-filter"
             value={filters.unitType || 'all'}
             onChange={(e) => handleUnitTypeChange(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+            aria-label="Select equipment type"
           >
             <option value="all">All Types</option>
             {equipmentTypes.map(type => (
@@ -150,6 +158,7 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
                   ? 'bg-primary-600 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
+              aria-label="Filter by all statuses"
             >
               All
             </button>
@@ -160,6 +169,7 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
                   ? 'bg-primary-600 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
+              aria-label="Filter by operational status"
             >
               Operational
             </button>
@@ -170,6 +180,7 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
                   ? 'bg-primary-600 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
+              aria-label="Filter by maintenance status"
             >
               Maintenance
             </button>
@@ -180,6 +191,7 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
                   ? 'bg-primary-600 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
+              aria-label="Filter by critical status"
             >
               Critical
             </button>
@@ -201,6 +213,11 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
             value={consumptionValue}
             onChange={handleConsumptionRangeChange}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            aria-label="Consumption range filter"
+            aria-valuemin="0"
+            aria-valuemax="1000"
+            aria-valuenow={consumptionValue}
+            aria-valuetext={consumptionValue === 1000 ? 'All' : `≤ ${consumptionValue} kWh`}
           />
         </div>
         
@@ -270,7 +287,11 @@ const Sidebar = ({ filters, activeModule, onFilterChange, onModuleChange, onAppl
             <p className="font-medium text-gray-900">Juan Dela Cruz</p>
             <p className="text-sm text-gray-500">Energy Analyst</p>
           </div>
-          <button className="p-2 rounded-lg hover:bg-gray-100">
+          <button 
+            className="p-2 rounded-lg hover:bg-gray-100"
+            aria-label="User menu"
+            title="User menu"
+          >
             <i className="fas fa-chevron-down text-gray-500"></i>
           </button>
         </div>

@@ -41,6 +41,8 @@ const ActiveFilters = ({ filters, onFilterChange }) => {
           <button 
             onClick={() => removeFilter('branch')}
             className="ml-2 text-gray-500 hover:text-gray-700"
+            aria-label="Remove branch filter"
+            title="Remove branch filter"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
@@ -53,6 +55,8 @@ const ActiveFilters = ({ filters, onFilterChange }) => {
           <button 
             onClick={() => removeFilter('building')}
             className="ml-2 text-gray-500 hover:text-gray-700"
+            aria-label="Remove building filter"
+            title="Remove building filter"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
@@ -65,6 +69,8 @@ const ActiveFilters = ({ filters, onFilterChange }) => {
           <button 
             onClick={() => removeFilter('floor')}
             className="ml-2 text-gray-500 hover:text-gray-700"
+            aria-label="Remove floor filter"
+            title="Remove floor filter"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
@@ -77,6 +83,8 @@ const ActiveFilters = ({ filters, onFilterChange }) => {
           <button 
             onClick={() => removeFilter('unitType')}
             className="ml-2 text-gray-500 hover:text-gray-700"
+            aria-label="Remove unit type filter"
+            title="Remove unit type filter"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
@@ -89,6 +97,8 @@ const ActiveFilters = ({ filters, onFilterChange }) => {
           <button 
             onClick={() => removeFilter('status')}
             className="ml-2 text-gray-500 hover:text-gray-700"
+            aria-label="Remove status filter"
+            title="Remove status filter"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
@@ -101,6 +111,8 @@ const ActiveFilters = ({ filters, onFilterChange }) => {
           <button 
             onClick={() => removeFilter('consumption')}
             className="ml-2 text-gray-500 hover:text-gray-700"
+            aria-label="Remove consumption range filter"
+            title="Remove consumption range filter"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
